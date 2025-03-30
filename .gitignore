@@ -1,0 +1,8 @@
+.DS_Store
+.mmc
+*.xlsx
+**/.git/
+gh-mmc
+web-part*
+singleton*
+observer*
