@@ -57,7 +57,7 @@ func PromptForClassroom(client *api.RESTClient) (classroomId GitHubClassroom, er
 	}
 
 	if len(classrooms) == 0 {
-		return GitHubClassroom{}, errors.New("No classrooms found.")
+		return GitHubClassroom{}, errors.New("no classrooms found")
 	}
 
 	optionMap := make(map[string]GitHubClassroom)
@@ -169,7 +169,7 @@ func PromptForAssignment(client *api.RESTClient, classroomId int) (assignment Gi
 	}
 
 	if len(options) == 0 {
-		return GitHubAssignment{}, errors.New("No assignments found for this classroom.")
+		return GitHubAssignment{}, errors.New("no assignments found for this classroom")
 	}
 
 	var qs = []*survey.Question{
