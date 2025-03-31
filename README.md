@@ -1,5 +1,4 @@
 [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
-[![Code Scanning Status](https://github.com/majikmate/gh-mmc/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/majikmate/gh-mmc/security/code-scanning)
 
 # majikmate Classroom
 
