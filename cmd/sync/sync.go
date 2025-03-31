@@ -8,7 +8,7 @@ import (
 	"github.com/cli/cli/v2/pkg/cmdutil"
 	"github.com/cli/go-gh/v2"
 	"github.com/cli/go-gh/v2/pkg/api"
-	"github.com/github/gh-classroom/cmd/gh-classroom/shared"
+	"github.com/majikmate/gh-mmc/pkg/ghapi"
 	"github.com/majikmate/gh-mmc/pkg/mmc"
 	"github.com/spf13/cobra"
 )
@@ -48,7 +48,7 @@ func NewCmdSync(f *cmdutil.Factory) *cobra.Command {
 			a, err := mmc.LoadAssignment()
 			if err != nil {
 				if errors.Is(err, mmc.ErrAssignmentNotFound) {
-					a, err := shared.PromptForAssignment(client, c.Classroom.Id)
+					a, err := ghapi.PromptForAssignment(client, c.Classroom.Id)
 					if err != nil {
 						mmc.Fatal(err)
 					}
@@ -61,7 +61,7 @@ func NewCmdSync(f *cmdutil.Factory) *cobra.Command {
 				aId = a.Id
 			}
 
-			acceptedAssignmentList, err := shared.ListAllAcceptedAssignments(client, aId, 15)
+			acceptedAssignmentList, err := ghapi.ListAllAcceptedAssignments(client, aId, 15)
 			if err != nil {
 				mmc.Fatal(err)
 			}

@@ -7,8 +7,7 @@ import (
 	"github.com/MakeNowJust/heredoc"
 	"github.com/cli/cli/v2/pkg/cmdutil"
 	"github.com/cli/go-gh/v2/pkg/api"
-	"github.com/github/gh-classroom/cmd/gh-classroom/shared"
-	"github.com/github/gh-classroom/pkg/classroom"
+	"github.com/majikmate/gh-mmc/pkg/ghapi"
 	"github.com/majikmate/gh-mmc/pkg/mmc"
 	"github.com/spf13/cobra"
 )
@@ -48,7 +47,7 @@ func NewCmdInit(f *cmdutil.Factory) *cobra.Command {
 			c, err := mmc.LoadClassroom()
 			if err != nil {
 				if errors.Is(err, mmc.ErrClassroomNotFound) {
-					c, err := shared.PromptForClassroom(client)
+					c, err := ghapi.PromptForClassroom(client)
 					if err != nil {
 						mmc.Fatal(fmt.Errorf("failed to get classroom: %v", err))
 					}
@@ -68,7 +67,7 @@ func NewCmdInit(f *cmdutil.Factory) *cobra.Command {
 				}
 			}
 
-			cls, err := classroom.GetClassroom(client, cId)
+			cls, err := ghapi.GetClassroom(client, cId)
 			if err != nil {
 				mmc.Fatal(fmt.Errorf("failed to get classroom: %v", err))
 			}

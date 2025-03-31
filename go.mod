@@ -3,10 +3,10 @@ module github.com/majikmate/gh-mmc
 go 1.23.7
 
 require (
+	github.com/AlecAivazis/survey/v2 v2.3.7
 	github.com/MakeNowJust/heredoc v1.0.0
 	github.com/cli/cli/v2 v2.69.0
 	github.com/cli/go-gh/v2 v2.12.0
-	github.com/github/gh-classroom v0.1.14
 	github.com/spf13/cobra v1.9.1
 	github.com/xuri/excelize/v2 v2.9.0
 )
@@ -14,7 +14,6 @@ require (
 require (
 	al.essio.dev/pkg/shellescape v1.6.0 // indirect
 	dario.cat/mergo v1.0.1 // indirect
-	github.com/AlecAivazis/survey/v2 v2.3.7 // indirect
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.3.1 // indirect
 	github.com/Masterminds/sprig/v3 v3.3.0 // indirect
@@ -29,7 +28,6 @@ require (
 	github.com/charmbracelet/x/cellbuf v0.0.13 // indirect
 	github.com/charmbracelet/x/term v0.2.1 // indirect
 	github.com/cli/browser v1.3.0 // indirect
-	github.com/cli/go-gh v1.2.1 // indirect
 	github.com/cli/safeexec v1.0.1 // indirect
 	github.com/cli/shurcooL-graphql v0.0.4 // indirect
 	github.com/danieljoos/wincred v1.2.2 // indirect
@@ -62,7 +60,7 @@ require (
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/richardlehane/mscfb v1.0.4 // indirect
 	github.com/richardlehane/msoleps v1.0.4 // indirect
-	github.com/rivo/tview v0.0.0-20250325173046-7b72abf45814 // indirect
+	github.com/rivo/tview v0.0.0-20250330220935-949945f8d922 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rogpeppe/go-internal v1.13.1 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
