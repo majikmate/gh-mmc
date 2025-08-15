@@ -11,10 +11,10 @@
             "mode": "auto",
             "program": "main.go",
             "console": "integratedTerminal",
-            // "cwd": "${workspaceFolder}/web-part-1/stauss.hannes",
+            // "cwd": "${workspaceFolder}/web-part-1",
             "cwd": "${workspaceFolder}",
             "args": [
-                "clone",
+                "leave",
             ],
         }
     ]
