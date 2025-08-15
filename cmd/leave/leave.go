@@ -24,6 +24,13 @@ func NewCmdLeave(f *cmdutil.Factory) *cobra.Command {
 
 			This command adds all students as members of the organization and grants
 			each of them ownership of the organization.
+
+			Because organisation management needs additional authorization scopes,
+			gh cli needs to be authorized to include these scopes. Please run:
+
+			gh auth refresh -h github.com -s admin:org
+
+			and follow the instructions.
 		`),
 		Example: `$ gh mmc leave`,
 		Run: func(cmd *cobra.Command, args []string) {

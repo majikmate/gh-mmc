@@ -13,10 +13,18 @@ This extension is an opinionated [GitHub Classroom](https://classroom.github.com
   brew install gh
   ```
 
+- Authorize gh cli to access your GitHub
+
+  ```bash
+  gh auth login
+  ```
+  ... and follow the prompts on the commandline
+
 - Install this extension
   ```bash
   gh extension install majikmate/gh-mmc
   ```
+
 - Upgrade this extension
   ```bash
   gh extension upgrade mmc
