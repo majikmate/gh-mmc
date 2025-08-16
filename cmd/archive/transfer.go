@@ -1,4 +1,4 @@
-package leave
+package archive
 
 import (
 	"fmt"
@@ -11,28 +11,31 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func NewCmdLeave(f *cmdutil.Factory) *cobra.Command {
+func NewCmdArchive(f *cmdutil.Factory) *cobra.Command {
 	var aId int
 	var verbose bool
 
 	cmd := &cobra.Command{
-		Use:   "leave",
-		Short: "Leaves a classroom and hands over ownership to each single student",
+		Use:   "archive",
+		Short: "Transfers classroom organization ownership to each single student and archives the classroom",
 		Long: heredoc.Doc(`
 
-			Leaves a classroom and hands over ownership to each single student.
+			Transfers classroom organization ownership to each single student and archives 
+			the classroom.
 
-			This command adds all students as members of the organization and grants
-			each of them ownership of the organization.
+			This command invites all students as members of the classroom organization
+			and grants each of them ownership of the organization with the intention
+			to transfer the organization ownership to all of them. This allows to leave
+			the organization as owner and avoids organization clutter in the own account.
 
 			Because organisation management needs additional authorization scopes,
 			gh cli needs to be authorized to include these scopes. Please run:
 
 			gh auth refresh -h github.com -s admin:org
 
-			and follow the instructions.
+			and follow the instructions before running this command.
 		`),
-		Example: `$ gh mmc leave`,
+		Example: `$ gh mmc archive`,
 		Run: func(cmd *cobra.Command, args []string) {
 			client, err := api.DefaultRESTClient()
 			if err != nil {
