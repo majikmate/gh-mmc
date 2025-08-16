@@ -1,6 +1,7 @@
 package ghapi
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"log"
@@ -331,4 +332,18 @@ func ListAllAcceptedAssignments(client *api.RESTClient, assignmentID int, perPag
 	}
 
 	return NewAcceptedAssignmentList(assignments), nil
+}
+
+func AddOrganizationOwner(client *api.RESTClient, org string, username string) error {
+
+	var response interface{}
+
+	role := []byte(`{"role":"admin"}`)
+
+	err := client.Put(fmt.Sprintf("orgs/%s/memberships/%s", org, username), bytes.NewReader(role), &response)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
