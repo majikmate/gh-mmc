@@ -5,7 +5,7 @@ go 1.24.6
 require (
 	github.com/AlecAivazis/survey/v2 v2.3.7
 	github.com/MakeNowJust/heredoc v1.0.0
-	github.com/cli/cli/v2 v2.76.2
+	github.com/cli/cli/v2 v2.79.0
 	github.com/cli/go-gh/v2 v2.12.2
 	github.com/spf13/cobra v1.9.1
 	github.com/xuri/excelize/v2 v2.9.1
@@ -49,6 +49,7 @@ require (
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/css v1.0.1 // indirect
+	github.com/hashicorp/go-version v1.7.0 // indirect
 	github.com/henvic/httpretty v0.1.4 // indirect
 	github.com/huandu/xstrings v1.5.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
@@ -81,7 +82,7 @@ require (
 	github.com/spf13/cast v1.9.2 // indirect
 	github.com/spf13/pflag v1.0.7 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
-	github.com/stretchr/testify v1.10.0 // indirect
+	github.com/stretchr/testify v1.11.0 // indirect
 	github.com/thlib/go-timezone-local v0.0.7 // indirect
 	github.com/tiendc/go-deepcopy v1.6.1 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
