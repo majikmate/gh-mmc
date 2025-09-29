@@ -250,7 +250,7 @@ $ gh mmc codespaces rm --org my-org --all`,
 				}
 
 				fmt.Printf("Found %d non-running codespace(s) to delete with --all flag:\n\n", len(selectedCodespaces))
-				
+
 				// Display in table format similar to interactive selection
 				displayCodespacesTable(selectedCodespaces)
 			} else {
@@ -418,7 +418,7 @@ func displayCodespacesTable(codespaces []ghapi.GitHubCodespace) {
 	// Calculate column widths for table alignment
 	maxNameWidth := len("NAME")       // Start with header width
 	maxRepoWidth := len("REPOSITORY") // Start with header width
-	
+
 	for _, cs := range codespaces {
 		if len(cs.DisplayName) > maxNameWidth {
 			maxNameWidth = len(cs.DisplayName)
@@ -434,7 +434,7 @@ func displayCodespacesTable(codespaces []ghapi.GitHubCodespace) {
 		maxRepoWidth, "REPOSITORY",
 		"IDLE",
 		"LAST USED")
-	
+
 	// Print separator line
 	fmt.Printf("%s  %s  %s  %s\n",
 		strings.Repeat("-", maxNameWidth),
