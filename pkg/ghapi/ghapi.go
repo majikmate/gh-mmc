@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/AlecAivazis/survey/v2"
+	"github.com/AlecAivazis/survey/v2/terminal"
 	"github.com/cli/go-gh/v2/pkg/api"
 )
 
@@ -27,6 +29,17 @@ type GitHubClassroom struct {
 	Archived     bool               `json:"archived"`
 	Url          string             `json:"url"`
 	Organization GitHubOrganization `json:"organization"`
+}
+
+func GetOrganization(client *api.RESTClient, orgName string) (GitHubOrganization, error) {
+	var response GitHubOrganization
+
+	err := client.Get(fmt.Sprintf("orgs/%s", orgName), &response)
+	if err != nil {
+		return GitHubOrganization{}, err
+	}
+
+	return response, nil
 }
 
 func GetClassroom(client *api.RESTClient, classroomID int) (GitHubClassroom, error) {
@@ -129,7 +142,7 @@ func PromptForOrganization(client *api.RESTClient) (GitHubOrganization, error) {
 		{
 			Name: "organization",
 			Prompt: &survey.Select{
-				Message: "Select an organization:",
+				Message: "Select an organization (ESC or Ctrl+C to cancel):",
 				Options: options,
 			},
 		},
@@ -141,6 +154,13 @@ func PromptForOrganization(client *api.RESTClient) (GitHubOrganization, error) {
 
 	err = survey.Ask(qs, &answer)
 	if err != nil {
+		// Handle user cancellation (Ctrl+C, ESC, etc.)
+		if err == terminal.InterruptErr ||
+			err.Error() == "interrupt" ||
+			err.Error() == "unexpected escape sequence from terminal" ||
+			strings.Contains(err.Error(), "escape sequence") {
+			return GitHubOrganization{}, errors.New("operation cancelled by user")
+		}
 		return GitHubOrganization{}, err
 	}
 
@@ -160,14 +180,34 @@ func GetStateIndicator(state string) string {
 }
 
 func PromptForCodespaceSelection(codespaces []GitHubCodespace) ([]GitHubCodespace, error) {
-	if len(codespaces) == 0 {
-		return nil, errors.New("no codespaces available")
+	// Filter out running codespaces - only show non-running ones
+	nonRunningCodespaces := make([]GitHubCodespace, 0)
+	for _, cs := range codespaces {
+		if cs.State != "Available" {
+			nonRunningCodespaces = append(nonRunningCodespaces, cs)
+		}
+	}
+
+	if len(nonRunningCodespaces) == 0 {
+		return nil, errors.New("no non-running codespaces available")
 	}
 
 	optionMap := make(map[string]GitHubCodespace)
-	options := make([]string, 0, len(codespaces))
+	options := make([]string, 0, len(nonRunningCodespaces))
 
-	for _, cs := range codespaces {
+	// Calculate column widths for table alignment
+	maxNameWidth := len("NAME")       // Start with header width
+	maxRepoWidth := len("REPOSITORY") // Start with header width
+	for _, cs := range nonRunningCodespaces {
+		if len(cs.DisplayName) > maxNameWidth {
+			maxNameWidth = len(cs.DisplayName)
+		}
+		if len(cs.Repository.FullName) > maxRepoWidth {
+			maxRepoWidth = len(cs.Repository.FullName)
+		}
+	}
+
+	for _, cs := range nonRunningCodespaces {
 		// Format last used time
 		lastUsed := "Never"
 		if cs.LastUsedAt != nil && *cs.LastUsedAt != "" {
@@ -176,22 +216,38 @@ func PromptForCodespaceSelection(codespaces []GitHubCodespace) ([]GitHubCodespac
 			}
 		}
 
-		// Create display string with state indicator and last used info
-		stateIndicator := GetStateIndicator(cs.State)
-
-		displayName := fmt.Sprintf("%s %s (%s) - Last used: %s",
-			stateIndicator, cs.DisplayName, cs.Repository.FullName, lastUsed)
+		// Create table-formatted display string (no state indicator)
+		displayName := fmt.Sprintf("%-*s  %-*s  %s",
+			maxNameWidth, cs.DisplayName,
+			maxRepoWidth, cs.Repository.FullName,
+			lastUsed)
 
 		optionMap[displayName] = cs
 		options = append(options, displayName)
 	}
 
+	// Prepare table headers as display-only options
+	tableHeader := fmt.Sprintf("       %-*s  %-*s  %s",
+		maxNameWidth, "NAME",
+		maxRepoWidth, "REPOSITORY",
+		"LAST USED")
+	tableSeparator := fmt.Sprintf("       %s",
+		strings.Repeat("-", maxNameWidth+2+maxRepoWidth+2+len("LAST USED")))
+
+	// Add headers and separator before the actual options
+	allOptions := make([]string, 0, len(options)+3)
+	allOptions = append(allOptions, "") // Empty line after survey instructions
+	allOptions = append(allOptions, tableHeader)
+	allOptions = append(allOptions, tableSeparator)
+	allOptions = append(allOptions, options...)
+
 	var qs = []*survey.Question{
 		{
 			Name: "codespaces",
 			Prompt: &survey.MultiSelect{
-				Message: "Select codespaces to delete (use space to select, enter to confirm):",
-				Options: options,
+				Message: "Select non-running codespaces to delete:\n\nUse space to select, enter to confirm, Ctrl+C to cancel",
+				Options: allOptions,
+				VimMode: false, // Disable vim mode so ESC doesn't toggle it
 			},
 		},
 	}
@@ -202,6 +258,13 @@ func PromptForCodespaceSelection(codespaces []GitHubCodespace) ([]GitHubCodespac
 
 	err := survey.Ask(qs, &answer)
 	if err != nil {
+		// Handle user cancellation (Ctrl+C, ESC, etc.)
+		if err == terminal.InterruptErr ||
+			err.Error() == "interrupt" ||
+			err.Error() == "unexpected escape sequence from terminal" ||
+			strings.Contains(err.Error(), "escape sequence") {
+			return nil, errors.New("operation cancelled by user")
+		}
 		return nil, err
 	}
 
@@ -211,6 +274,10 @@ func PromptForCodespaceSelection(codespaces []GitHubCodespace) ([]GitHubCodespac
 
 	selectedCodespaces := make([]GitHubCodespace, 0, len(answer.Codespaces))
 	for _, selectedOption := range answer.Codespaces {
+		// Skip header/separator options
+		if strings.HasPrefix(selectedOption, "Name") || strings.HasPrefix(selectedOption, "────") || selectedOption == "" {
+			continue
+		}
 		if cs, exists := optionMap[selectedOption]; exists {
 			selectedCodespaces = append(selectedCodespaces, cs)
 		}
@@ -559,12 +626,31 @@ type CodespaceVersionInfo struct {
 }
 
 func GetCodespacesForOrg(client *api.RESTClient, orgName string) ([]GitHubCodespace, error) {
+	// First, verify the organization exists
+	_, err := GetOrganization(client, orgName)
+	if err != nil {
+		if strings.Contains(err.Error(), "404") || strings.Contains(err.Error(), "Not Found") {
+			return nil, fmt.Errorf("organization '%s' not found. Please check the organization name is correct and you have access to it", orgName)
+		}
+		return nil, fmt.Errorf("failed to verify organization %s: %v", orgName, err)
+	}
+
 	var response GitHubCodespacesResponse
 
 	// Use the organization codespaces endpoint
 	endpoint := fmt.Sprintf("orgs/%s/codespaces", orgName)
-	err := client.Get(endpoint, &response)
+	err = client.Get(endpoint, &response)
 	if err != nil {
+		// Check if it's a 404 error to provide more helpful information
+		if strings.Contains(err.Error(), "404") || strings.Contains(err.Error(), "Not Found") {
+			return nil, fmt.Errorf("failed to fetch codespaces for org %s: organization exists but codespaces endpoint not available. This could mean:\n"+
+				"1. GitHub Codespaces is not enabled for this organization\n"+
+				"2. Your GitHub token doesn't have 'admin:org' scope\n"+
+				"3. You don't have permission to manage codespaces in this organization\n\n"+
+				"To fix permission issues, try refreshing your GitHub CLI authentication:\n"+
+				"   gh auth refresh --scopes admin:org\n\n"+
+				"Original error: %v", orgName, err)
+		}
 		return nil, fmt.Errorf("failed to fetch codespaces for org %s: %v", orgName, err)
 	}
 
