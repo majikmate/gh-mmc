@@ -226,28 +226,14 @@ func PromptForCodespaceSelection(codespaces []GitHubCodespace) ([]GitHubCodespac
 		options = append(options, displayName)
 	}
 
-	// Prepare table headers as display-only options
-	tableHeader := fmt.Sprintf("       %-*s  %-*s  %s",
-		maxNameWidth, "NAME",
-		maxRepoWidth, "REPOSITORY",
-		"LAST USED")
-	tableSeparator := fmt.Sprintf("       %s",
-		strings.Repeat("-", maxNameWidth+2+maxRepoWidth+2+len("LAST USED")))
-
-	// Add headers and separator before the actual options
-	allOptions := make([]string, 0, len(options)+3)
-	allOptions = append(allOptions, "") // Empty line after survey instructions
-	allOptions = append(allOptions, tableHeader)
-	allOptions = append(allOptions, tableSeparator)
-	allOptions = append(allOptions, options...)
-
 	var qs = []*survey.Question{
 		{
 			Name: "codespaces",
 			Prompt: &survey.MultiSelect{
-				Message: "Select non-running codespaces to delete:\n\nUse space to select, enter to confirm, Ctrl+C to cancel",
-				Options: allOptions,
-				VimMode: false, // Disable vim mode so ESC doesn't toggle it
+				Message: "Select non-running codespaces to delete:",
+				Options: options,
+				VimMode: false,                                                                                   // Disable vim mode so ESC doesn't toggle it
+				Help:    "[Use arrows to move, space to select, <right> to all, <left> to none, type to filter]", // Remove default help to prevent duplication
 			},
 		},
 	}
@@ -274,10 +260,6 @@ func PromptForCodespaceSelection(codespaces []GitHubCodespace) ([]GitHubCodespac
 
 	selectedCodespaces := make([]GitHubCodespace, 0, len(answer.Codespaces))
 	for _, selectedOption := range answer.Codespaces {
-		// Skip header/separator options
-		if strings.HasPrefix(selectedOption, "Name") || strings.HasPrefix(selectedOption, "────") || selectedOption == "" {
-			continue
-		}
 		if cs, exists := optionMap[selectedOption]; exists {
 			selectedCodespaces = append(selectedCodespaces, cs)
 		}

@@ -230,7 +230,7 @@ $ gh mmc codespaces rm --org my-org`,
 			}
 
 			// Delete selected codespaces
-			err = deleteSelectedCodespaces(client, selectedCodespaces, verbose)
+			err = deleteSelectedCodespaces(client, orgName, selectedCodespaces, verbose)
 			if err != nil {
 				mmc.Fatal(fmt.Errorf("failed to delete selected codespaces: %v", err))
 			}
@@ -244,7 +244,7 @@ $ gh mmc codespaces rm --org my-org`,
 }
 
 // deleteNonRunningCodespaces deletes all codespaces that are not in "Available" state
-func deleteNonRunningCodespaces(client *api.RESTClient, codespaces []ghapi.GitHubCodespace, verbose bool) error {
+func deleteNonRunningCodespaces(client *api.RESTClient, orgName string, codespaces []ghapi.GitHubCodespace, verbose bool) error {
 	nonRunningCodespaces := []ghapi.GitHubCodespace{}
 
 	// Filter for non-running codespaces
@@ -281,7 +281,7 @@ func deleteNonRunningCodespaces(client *api.RESTClient, codespaces []ghapi.GitHu
 			fmt.Printf("Deleting codespace %s (%s)...\n", cs.DisplayName, cs.Name)
 		}
 
-		err := deleteCodespace(client, cs.Name, verbose)
+		err := deleteCodespace(client, orgName, cs.Owner.Login, cs.Name, verbose)
 		if err != nil {
 			fmt.Printf("Failed to delete codespace %s: %v\n", cs.DisplayName, err)
 			continue
@@ -296,9 +296,10 @@ func deleteNonRunningCodespaces(client *api.RESTClient, codespaces []ghapi.GitHu
 	return nil
 }
 
-// deleteCodespace deletes a single codespace by name
-func deleteCodespace(client *api.RESTClient, codespaceName string, verbose bool) error {
-	endpoint := fmt.Sprintf("user/codespaces/%s", codespaceName)
+// deleteCodespace deletes a single codespace by name using the organization endpoint
+func deleteCodespace(client *api.RESTClient, orgName, username, codespaceName string, verbose bool) error {
+	// Use the organization codespace deletion endpoint
+	endpoint := fmt.Sprintf("orgs/%s/members/%s/codespaces/%s", orgName, username, codespaceName)
 
 	if verbose {
 		fmt.Printf("DELETE %s\n", endpoint)
@@ -331,7 +332,7 @@ func formatPrebuild(available bool, availability string) string {
 }
 
 // deleteSelectedCodespaces deletes the specified codespaces
-func deleteSelectedCodespaces(client *api.RESTClient, codespaces []ghapi.GitHubCodespace, verbose bool) error {
+func deleteSelectedCodespaces(client *api.RESTClient, orgName string, codespaces []ghapi.GitHubCodespace, verbose bool) error {
 	fmt.Printf("\nYou selected %d codespace(s) for deletion:\n", len(codespaces))
 	for _, cs := range codespaces {
 		fmt.Printf("  - %s (%s) - State: %s\n", cs.DisplayName, cs.Repository.FullName, cs.State)
@@ -356,7 +357,7 @@ func deleteSelectedCodespaces(client *api.RESTClient, codespaces []ghapi.GitHubC
 			fmt.Printf("Deleting codespace %s (%s)...\n", cs.DisplayName, cs.Name)
 		}
 
-		err := deleteCodespace(client, cs.Name, verbose)
+		err := deleteCodespace(client, orgName, cs.Owner.Login, cs.Name, verbose)
 		if err != nil {
 			fmt.Printf("Failed to delete codespace %s: %v\n", cs.DisplayName, err)
 			continue
