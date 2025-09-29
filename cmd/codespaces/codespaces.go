@@ -386,18 +386,18 @@ func formatPrebuild(available bool, availability string) string {
 // formatGitStatus formats git status information for display
 func formatGitStatus(gitStatus ghapi.GitHubCodespaceGitStatus) string {
 	var status []string
-	
+
 	if gitStatus.HasUncommittedChanges {
 		status = append(status, "U") // Uncommitted
 	}
 	if gitStatus.HasUnpushedChanges {
 		status = append(status, "P") // Unpushed
 	}
-	
+
 	if len(status) == 0 {
 		return "✓" // Clean
 	}
-	
+
 	return strings.Join(status, ",")
 }
 
