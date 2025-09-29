@@ -295,59 +295,6 @@ $ gh mmc codespaces rm --org my-org --all`,
 	return cmd
 }
 
-// deleteNonRunningCodespaces deletes all codespaces that are not in "Available" state
-func deleteNonRunningCodespaces(client *api.RESTClient, orgName string, codespaces []ghapi.GitHubCodespace, verbose bool) error {
-	nonRunningCodespaces := []ghapi.GitHubCodespace{}
-
-	// Filter for non-running codespaces
-	for _, cs := range codespaces {
-		if cs.State != "Available" {
-			nonRunningCodespaces = append(nonRunningCodespaces, cs)
-		}
-	}
-
-	if len(nonRunningCodespaces) == 0 {
-		fmt.Println("No non-running codespaces found to delete.")
-		return nil
-	}
-
-	fmt.Printf("Found %d non-running codespaces to delete:\n", len(nonRunningCodespaces))
-	for _, cs := range nonRunningCodespaces {
-		fmt.Printf("  - %s (%s) - State: %s\n", cs.DisplayName, cs.Repository.FullName, cs.State)
-	}
-
-	// Ask for confirmation
-	fmt.Print("\nAre you sure you want to delete these codespaces? (y/N): ")
-	var response string
-	fmt.Scanln(&response)
-
-	if strings.ToLower(response) != "y" && strings.ToLower(response) != "yes" {
-		fmt.Println("Deletion cancelled.")
-		return nil
-	}
-
-	// Delete each non-running codespace
-	fmt.Println("\nDeleting non-running codespaces...")
-	for _, cs := range nonRunningCodespaces {
-		if verbose {
-			fmt.Printf("Deleting codespace %s (%s)...\n", cs.DisplayName, cs.Name)
-		}
-
-		err := deleteCodespace(client, orgName, cs.Owner.Login, cs.Name, verbose)
-		if err != nil {
-			fmt.Printf("Failed to delete codespace %s: %v\n", cs.DisplayName, err)
-			continue
-		}
-
-		if verbose {
-			fmt.Printf("Successfully deleted codespace %s\n", cs.DisplayName)
-		}
-	}
-
-	fmt.Printf("Deletion complete. Deleted %d codespaces.\n", len(nonRunningCodespaces))
-	return nil
-}
-
 // deleteCodespace deletes a single codespace by name using the organization endpoint
 func deleteCodespace(client *api.RESTClient, orgName, username, codespaceName string, verbose bool) error {
 	// Use the organization codespace deletion endpoint
@@ -408,7 +355,12 @@ func deleteSelectedCodespaces(client *api.RESTClient, orgName string, codespaces
 	// Ask for confirmation
 	fmt.Print("\nAre you sure you want to delete these codespaces? (y/N): ")
 	var response string
-	fmt.Scanln(&response)
+	_, err := fmt.Scanln(&response)
+	if err != nil {
+		// Handle input error (e.g., EOF, interrupted input)
+		fmt.Println("\nDeletion cancelled.")
+		return nil
+	}
 
 	if strings.ToLower(response) != "y" && strings.ToLower(response) != "yes" {
 		fmt.Println("Deletion cancelled.")
