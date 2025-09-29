@@ -1,3 +1,3 @@
 {
-    "image": "ghcr.com/majikmate/devcontainer-dev:latest"
+    "image": "ghcr.io/majikmate/devcontainer-dev:latest"
 }
