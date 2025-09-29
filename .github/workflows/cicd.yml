@@ -36,10 +36,10 @@ jobs:
 
     steps:
       - name: checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: run the code linter
-        uses: golangci/golangci-lint-action@1481404843c368bc19ca9406f87d6e0fc97bdcfd # v7.0 pinned to a specific commit to assure immutability
+        uses: golangci/golangci-lint-action@v8
         with:
           version: latest
 
@@ -58,7 +58,7 @@ jobs:
 
     steps:
       - name: checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: setup go
         uses: ./.github/actions/setup-go
@@ -82,7 +82,7 @@ jobs:
 
     steps:
       - name: checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: setup go
         uses: ./.github/actions/setup-go
@@ -104,10 +104,10 @@ jobs:
 
     steps:
       - name: checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: build and release binaries
-        uses: cli/gh-extension-precompile@561b19deda1228a0edf856c3325df87416f8c9bd # v2.0 pinned to a specific commit to assure immutability
+        uses: cli/gh-extension-precompile@v2.1.0
         with:
             go_version_file: go.mod
             generate_attestations: true
