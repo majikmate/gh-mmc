@@ -92,8 +92,8 @@ $ gh mmc codespaces list --org my-org`,
 			}
 
 			// Print header with fixed-width formatting to handle emoji alignment
-			fmt.Printf("%-25s %-5s %-35s %-20s %-42s %-8s %-8s %s\n",
-				"NAME", "STATE", "REPOSITORY", "OWNER", "MACHINE", "PREBUILD", "IDLE", "LAST USED")
+			fmt.Printf("%-25s %-6s %-35s %-20s %-42s %-8s %-5s %s\n",
+				"NAME", "GIT", "REPOSITORY", "OWNER", "MACHINE", "IDLE", "PRE", "LAST USED")
 
 			for _, cs := range codespaces {
 				// Format machine information with consistent padding
@@ -116,9 +116,6 @@ $ gh mmc codespaces list --org my-org`,
 					}
 				}
 
-				// Use single-character emoji state indicator for proper alignment
-				stateIndicator := ghapi.GetStateIndicator(cs.State)
-
 				// Truncate long names and repositories for better formatting
 				displayName := cs.DisplayName
 				if len(displayName) > 24 {
@@ -132,6 +129,9 @@ $ gh mmc codespaces list --org my-org`,
 
 				// Format idle timeout
 				idleTimeout := fmt.Sprintf("%dm", cs.IdleTimeoutMinutes)
+
+				// Format git status
+				gitStatus := formatGitStatus(cs.GitStatus)
 
 				// Add color coding based on state
 				var colorStart, colorEnd string
@@ -147,15 +147,15 @@ $ gh mmc codespaces list --org my-org`,
 					colorEnd = "\033[0m"    // Reset
 				}
 
-				fmt.Printf("%s%-25s %-5s %-35s %-20s %-42s %-8s %-8s %s%s\n",
+				fmt.Printf("%s%-25s %-6s %-35s %-20s %-42s %-8s %-5s %s%s\n",
 					colorStart,
 					displayName,
-					stateIndicator,
+					gitStatus,
 					repoName,
 					cs.Owner.Login,
 					machineInfo,
-					prebuildInfo,
 					idleTimeout,
+					prebuildInfo,
 					lastUsed,
 					colorEnd,
 				)
@@ -187,7 +187,8 @@ func NewCmdCodespacesRm(f *cmdutil.Factory) *cobra.Command {
 			select which ones to delete. You can select multiple codespaces at once.
 
 			Use the --all flag to automatically delete all non-running codespaces 
-			without interactive selection.
+			without interactive selection. For safety, --all only deletes codespaces 
+			with clean git status (no uncommitted or unpushed changes).
 
 			The organization is looked up from the classroom metadata if it exists, 
 			otherwise you will be prompted to select an organization from your available 
@@ -237,19 +238,31 @@ $ gh mmc codespaces rm --org my-org --all`,
 			var selectedCodespaces []ghapi.GitHubCodespace
 
 			if all {
-				// Filter non-running codespaces when using --all flag
+				// Filter non-running codespaces without uncommitted/unpushed changes when using --all flag
+				var filteredCount int
 				for _, cs := range codespaces {
-					if cs.State != "Available" {
+					if cs.State != "Available" && !cs.GitStatus.HasUncommittedChanges && !cs.GitStatus.HasUnpushedChanges {
 						selectedCodespaces = append(selectedCodespaces, cs)
+					} else if cs.State != "Available" {
+						filteredCount++ // Count filtered out non-running codespaces
 					}
 				}
 
 				if len(selectedCodespaces) == 0 {
-					fmt.Println("No non-running codespaces found to delete.")
+					if filteredCount > 0 {
+						fmt.Printf("No clean non-running codespaces found to delete.\n")
+						fmt.Printf("Found %d non-running codespace(s) with uncommitted or unpushed changes (skipped for safety).\n", filteredCount)
+					} else {
+						fmt.Println("No non-running codespaces found to delete.")
+					}
 					return
 				}
 
-				fmt.Printf("Found %d non-running codespace(s) to delete with --all flag:\n\n", len(selectedCodespaces))
+				fmt.Printf("Found %d clean non-running codespace(s) to delete with --all flag:\n", len(selectedCodespaces))
+				if filteredCount > 0 {
+					fmt.Printf("(Skipped %d non-running codespace(s) with uncommitted or unpushed changes)\n", filteredCount)
+				}
+				fmt.Println()
 
 				// Display in table format similar to interactive selection
 				displayCodespacesTable(selectedCodespaces)
@@ -277,7 +290,7 @@ $ gh mmc codespaces rm --org my-org --all`,
 
 	cmd.Flags().StringVarP(&orgName, "org", "o", "", "Organization name (if not provided, will be detected from classroom metadata or prompted)")
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose error output")
-	cmd.Flags().BoolVarP(&all, "all", "a", false, "Delete all non-running codespaces without interactive selection")
+	cmd.Flags().BoolVarP(&all, "all", "a", false, "Delete all clean non-running codespaces (excludes those with uncommitted/unpushed changes)")
 
 	return cmd
 }
@@ -370,6 +383,24 @@ func formatPrebuild(available bool, availability string) string {
 	}
 }
 
+// formatGitStatus formats git status information for display
+func formatGitStatus(gitStatus ghapi.GitHubCodespaceGitStatus) string {
+	var status []string
+	
+	if gitStatus.HasUncommittedChanges {
+		status = append(status, "U") // Uncommitted
+	}
+	if gitStatus.HasUnpushedChanges {
+		status = append(status, "P") // Unpushed
+	}
+	
+	if len(status) == 0 {
+		return "✓" // Clean
+	}
+	
+	return strings.Join(status, ",")
+}
+
 // deleteSelectedCodespaces deletes the specified codespaces
 func deleteSelectedCodespaces(client *api.RESTClient, orgName string, codespaces []ghapi.GitHubCodespace, verbose bool) error {
 	fmt.Printf("You selected %d codespace(s) for deletion.\n", len(codespaces))
@@ -429,17 +460,21 @@ func displayCodespacesTable(codespaces []ghapi.GitHubCodespace) {
 	}
 
 	// Print table header
-	fmt.Printf("%-*s  %-*s  %-8s  %s\n",
+	fmt.Printf("%-*s  %-6s  %-*s  %-8s  %-5s  %s\n",
 		maxNameWidth, "NAME",
+		"GIT",
 		maxRepoWidth, "REPOSITORY",
 		"IDLE",
+		"PRE",
 		"LAST USED")
 
 	// Print separator line
-	fmt.Printf("%s  %s  %s  %s\n",
+	fmt.Printf("%s  %s  %s  %s  %s  %s\n",
 		strings.Repeat("-", maxNameWidth),
+		strings.Repeat("-", 6),
 		strings.Repeat("-", maxRepoWidth),
 		strings.Repeat("-", 8),
+		strings.Repeat("-", 5),
 		strings.Repeat("-", 19)) // Length of "Mon 2006-01-02 15:04"
 
 	// Print each codespace row
@@ -455,11 +490,23 @@ func displayCodespacesTable(codespaces []ghapi.GitHubCodespace) {
 		// Format idle timeout
 		idleTimeout := fmt.Sprintf("%dm", cs.IdleTimeoutMinutes)
 
+		// Format git status
+		gitStatus := formatGitStatus(cs.GitStatus)
+
+		// Handle nullable PrebuildAvailability
+		var availability string
+		if cs.Machine.PrebuildAvailability != nil {
+			availability = *cs.Machine.PrebuildAvailability
+		}
+		prebuildInfo := formatPrebuild(cs.Prebuild, availability)
+
 		// Print formatted row
-		fmt.Printf("%-*s  %-*s  %-8s  %s\n",
+		fmt.Printf("%-*s  %-6s  %-*s  %-8s  %-5s  %s\n",
 			maxNameWidth, cs.DisplayName,
+			gitStatus,
 			maxRepoWidth, cs.Repository.FullName,
 			idleTimeout,
+			prebuildInfo,
 			lastUsed)
 	}
 	fmt.Println() // Add blank line after table
