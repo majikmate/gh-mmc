@@ -216,10 +216,14 @@ func PromptForCodespaceSelection(codespaces []GitHubCodespace) ([]GitHubCodespac
 			}
 		}
 
+		// Format idle timeout
+		idleTimeout := fmt.Sprintf("%dm", cs.IdleTimeoutMinutes)
+
 		// Create table-formatted display string (no state indicator)
-		displayName := fmt.Sprintf("%-*s  %-*s  %s",
+		displayName := fmt.Sprintf("%-*s  %-*s  %-s  %s",
 			maxNameWidth, cs.DisplayName,
 			maxRepoWidth, cs.Repository.FullName,
+			idleTimeout,
 			lastUsed)
 
 		optionMap[displayName] = cs
@@ -560,13 +564,13 @@ type GitHubCodespaceUser struct {
 }
 
 type GitHubCodespaceMachine struct {
-	Name                 string `json:"name"`
-	DisplayName          string `json:"display_name"`
-	OperatingSystem      string `json:"operating_system"`
-	StorageInBytes       int64  `json:"storage_in_bytes"`
-	MemoryInBytes        int64  `json:"memory_in_bytes"`
-	CPUs                 int    `json:"cpus"`
-	PrebuildAvailability string `json:"prebuild_availability"`
+	Name                 string  `json:"name"`
+	DisplayName          string  `json:"display_name"`
+	OperatingSystem      string  `json:"operating_system"`
+	StorageInBytes       int64   `json:"storage_in_bytes"`
+	MemoryInBytes        int64   `json:"memory_in_bytes"`
+	CPUs                 int     `json:"cpus"`
+	PrebuildAvailability *string `json:"prebuild_availability"`
 }
 
 type GitHubCodespaceGitStatus struct {
@@ -575,36 +579,6 @@ type GitHubCodespaceGitStatus struct {
 	HasUnpushedChanges    bool   `json:"has_unpushed_changes"`
 	HasUncommittedChanges bool   `json:"has_uncommitted_changes"`
 	Ref                   string `json:"ref"`
-}
-
-type GitHubCodespaceEnvironment struct {
-	ID   int    `json:"id"`
-	Name string `json:"name"`
-}
-
-type ContainerImageInfo struct {
-	Registry string `json:"registry"`
-	Image    string `json:"image"`
-	Tag      string `json:"tag"`
-}
-
-type RegistryTagsResponse struct {
-	Results []RegistryTag `json:"results"`
-}
-
-type RegistryTag struct {
-	Name        string    `json:"name"`
-	LastUpdated time.Time `json:"last_updated"`
-}
-
-// CodespaceVersionInfo holds version metadata extracted from a codespace container
-type CodespaceVersionInfo struct {
-	Version     string `json:"version"`
-	RefName     string `json:"refName"`
-	Revision    string `json:"revision"`
-	Digest      string `json:"digest"`
-	ImageID     string `json:"imageID"`
-	DefaultInfo string `json:"defaultInfo"`
 }
 
 func GetCodespacesForOrg(client *api.RESTClient, orgName string) ([]GitHubCodespace, error) {

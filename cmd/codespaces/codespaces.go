@@ -92,8 +92,8 @@ $ gh mmc codespaces list --org my-org`,
 			}
 
 			// Print header with fixed-width formatting to handle emoji alignment
-			fmt.Printf("%-25s %-5s %-35s %-20s %-42s %-8s %s\n",
-				"NAME", "STATE", "REPOSITORY", "OWNER", "MACHINE", "PREBUILD", "LAST USED")
+			fmt.Printf("%-25s %-5s %-35s %-20s %-42s %-8s %-8s %s\n",
+				"NAME", "STATE", "REPOSITORY", "OWNER", "MACHINE", "PREBUILD", "IDLE", "LAST USED")
 
 			for _, cs := range codespaces {
 				// Format machine information with consistent padding
@@ -101,7 +101,13 @@ $ gh mmc codespaces list --org my-org`,
 				storageGB := cs.Machine.StorageInBytes / (1024 * 1024 * 1024)
 				machineInfo := fmt.Sprintf("%2d cores, %2d GB RAM, %2d GB storage (%s)",
 					cs.Machine.CPUs, memoryGB, storageGB, cs.Machine.OperatingSystem)
-				prebuildInfo := formatPrebuild(cs.Prebuild, cs.Machine.PrebuildAvailability)
+
+				// Handle nullable PrebuildAvailability
+				var availability string
+				if cs.Machine.PrebuildAvailability != nil {
+					availability = *cs.Machine.PrebuildAvailability
+				}
+				prebuildInfo := formatPrebuild(cs.Prebuild, availability)
 
 				lastUsed := "Never"
 				if cs.LastUsedAt != nil && *cs.LastUsedAt != "" {
@@ -124,6 +130,9 @@ $ gh mmc codespaces list --org my-org`,
 					repoName = repoName[:31] + "..."
 				}
 
+				// Format idle timeout
+				idleTimeout := fmt.Sprintf("%dm", cs.IdleTimeoutMinutes)
+
 				// Add color coding based on state
 				var colorStart, colorEnd string
 				switch cs.State {
@@ -138,7 +147,7 @@ $ gh mmc codespaces list --org my-org`,
 					colorEnd = "\033[0m"    // Reset
 				}
 
-				fmt.Printf("%s%-25s %-5s %-35s %-20s %-42s %-8s %s%s\n",
+				fmt.Printf("%s%-25s %-5s %-35s %-20s %-42s %-8s %-8s %s%s\n",
 					colorStart,
 					displayName,
 					stateIndicator,
@@ -146,6 +155,7 @@ $ gh mmc codespaces list --org my-org`,
 					cs.Owner.Login,
 					machineInfo,
 					prebuildInfo,
+					idleTimeout,
 					lastUsed,
 					colorEnd,
 				)
@@ -164,6 +174,7 @@ $ gh mmc codespaces list --org my-org`,
 func NewCmdCodespacesRm(f *cmdutil.Factory) *cobra.Command {
 	var orgName string
 	var verbose bool
+	var all bool
 
 	cmd := &cobra.Command{
 		Use:   "rm",
@@ -175,11 +186,16 @@ func NewCmdCodespacesRm(f *cmdutil.Factory) *cobra.Command {
 			This command will show you all available codespaces and allow you to 
 			select which ones to delete. You can select multiple codespaces at once.
 
+			Use the --all flag to automatically delete all non-running codespaces 
+			without interactive selection.
+
 			The organization is looked up from the classroom metadata if it exists, 
 			otherwise you will be prompted to select an organization from your available 
 			organizations.`),
 		Example: `$ gh mmc codespaces rm
-$ gh mmc codespaces rm --org my-org`,
+$ gh mmc codespaces rm --org my-org
+$ gh mmc codespaces rm --all
+$ gh mmc codespaces rm --org my-org --all`,
 		Run: func(cmd *cobra.Command, args []string) {
 			client, err := api.DefaultRESTClient()
 			if err != nil {
@@ -218,15 +234,37 @@ $ gh mmc codespaces rm --org my-org`,
 				return
 			}
 
-			// Prompt user to select codespaces to delete
-			selectedCodespaces, err := ghapi.PromptForCodespaceSelection(codespaces)
-			if err != nil {
-				mmc.Fatal(fmt.Errorf("failed to select codespaces: %v", err))
-			}
+			var selectedCodespaces []ghapi.GitHubCodespace
 
-			if len(selectedCodespaces) == 0 {
-				fmt.Println("No codespaces selected for deletion.")
-				return
+			if all {
+				// Filter non-running codespaces when using --all flag
+				for _, cs := range codespaces {
+					if cs.State != "Available" {
+						selectedCodespaces = append(selectedCodespaces, cs)
+					}
+				}
+
+				if len(selectedCodespaces) == 0 {
+					fmt.Println("No non-running codespaces found to delete.")
+					return
+				}
+
+				fmt.Printf("Found %d non-running codespace(s) to delete with --all flag:\n\n", len(selectedCodespaces))
+				
+				// Display in table format similar to interactive selection
+				displayCodespacesTable(selectedCodespaces)
+			} else {
+				// Prompt user to select codespaces to delete
+				var err error
+				selectedCodespaces, err = ghapi.PromptForCodespaceSelection(codespaces)
+				if err != nil {
+					mmc.Fatal(fmt.Errorf("failed to select codespaces: %v", err))
+				}
+
+				if len(selectedCodespaces) == 0 {
+					fmt.Println("No codespaces selected for deletion.")
+					return
+				}
 			}
 
 			// Delete selected codespaces
@@ -239,6 +277,7 @@ $ gh mmc codespaces rm --org my-org`,
 
 	cmd.Flags().StringVarP(&orgName, "org", "o", "", "Organization name (if not provided, will be detected from classroom metadata or prompted)")
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose error output")
+	cmd.Flags().BoolVarP(&all, "all", "a", false, "Delete all non-running codespaces without interactive selection")
 
 	return cmd
 }
@@ -333,10 +372,7 @@ func formatPrebuild(available bool, availability string) string {
 
 // deleteSelectedCodespaces deletes the specified codespaces
 func deleteSelectedCodespaces(client *api.RESTClient, orgName string, codespaces []ghapi.GitHubCodespace, verbose bool) error {
-	fmt.Printf("\nYou selected %d codespace(s) for deletion:\n", len(codespaces))
-	for _, cs := range codespaces {
-		fmt.Printf("  - %s (%s) - State: %s\n", cs.DisplayName, cs.Repository.FullName, cs.State)
-	}
+	fmt.Printf("You selected %d codespace(s) for deletion.\n", len(codespaces))
 
 	// Ask for confirmation
 	fmt.Print("\nAre you sure you want to delete these codespaces? (y/N): ")
@@ -371,4 +407,60 @@ func deleteSelectedCodespaces(client *api.RESTClient, orgName string, codespaces
 
 	fmt.Printf("Deletion complete. Successfully deleted %d of %d codespaces.\n", successCount, len(codespaces))
 	return nil
+}
+
+// displayCodespacesTable displays codespaces in a formatted table similar to the interactive selection
+func displayCodespacesTable(codespaces []ghapi.GitHubCodespace) {
+	if len(codespaces) == 0 {
+		return
+	}
+
+	// Calculate column widths for table alignment
+	maxNameWidth := len("NAME")       // Start with header width
+	maxRepoWidth := len("REPOSITORY") // Start with header width
+	
+	for _, cs := range codespaces {
+		if len(cs.DisplayName) > maxNameWidth {
+			maxNameWidth = len(cs.DisplayName)
+		}
+		if len(cs.Repository.FullName) > maxRepoWidth {
+			maxRepoWidth = len(cs.Repository.FullName)
+		}
+	}
+
+	// Print table header
+	fmt.Printf("%-*s  %-*s  %-8s  %s\n",
+		maxNameWidth, "NAME",
+		maxRepoWidth, "REPOSITORY",
+		"IDLE",
+		"LAST USED")
+	
+	// Print separator line
+	fmt.Printf("%s  %s  %s  %s\n",
+		strings.Repeat("-", maxNameWidth),
+		strings.Repeat("-", maxRepoWidth),
+		strings.Repeat("-", 8),
+		strings.Repeat("-", 19)) // Length of "Mon 2006-01-02 15:04"
+
+	// Print each codespace row
+	for _, cs := range codespaces {
+		// Format last used time
+		lastUsed := "Never"
+		if cs.LastUsedAt != nil && *cs.LastUsedAt != "" {
+			if t, err := time.Parse(time.RFC3339, *cs.LastUsedAt); err == nil {
+				lastUsed = t.Format("Mon 2006-01-02 15:04")
+			}
+		}
+
+		// Format idle timeout
+		idleTimeout := fmt.Sprintf("%dm", cs.IdleTimeoutMinutes)
+
+		// Print formatted row
+		fmt.Printf("%-*s  %-*s  %-8s  %s\n",
+			maxNameWidth, cs.DisplayName,
+			maxRepoWidth, cs.Repository.FullName,
+			idleTimeout,
+			lastUsed)
+	}
+	fmt.Println() // Add blank line after table
 }
