@@ -6,6 +6,7 @@ import (
 	"log"
 	"math"
 	"sync"
+	"time"
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/cli/go-gh/v2/pkg/api"
@@ -89,6 +90,133 @@ func PromptForClassroom(client *api.RESTClient) (classroomId GitHubClassroom, er
 	}
 
 	return optionMap[answer.Classroom], nil
+}
+
+func ListOrganizations(client *api.RESTClient, page int, perPage int) ([]GitHubOrganization, error) {
+	var response []GitHubOrganization
+
+	err := client.Get(fmt.Sprintf("user/orgs?page=%v&per_page=%v", page, perPage), &response)
+	if err != nil {
+		return nil, err
+	}
+
+	return response, nil
+}
+
+func PromptForOrganization(client *api.RESTClient) (GitHubOrganization, error) {
+	organizations, err := ListOrganizations(client, 1, 100)
+	if err != nil {
+		return GitHubOrganization{}, err
+	}
+
+	if len(organizations) == 0 {
+		return GitHubOrganization{}, errors.New("no organizations found")
+	}
+
+	optionMap := make(map[string]GitHubOrganization)
+	options := make([]string, 0, len(organizations))
+
+	for _, org := range organizations {
+		displayName := org.Login
+		if org.Name != "" {
+			displayName = fmt.Sprintf("%s (%s)", org.Name, org.Login)
+		}
+		optionMap[displayName] = org
+		options = append(options, displayName)
+	}
+
+	var qs = []*survey.Question{
+		{
+			Name: "organization",
+			Prompt: &survey.Select{
+				Message: "Select an organization:",
+				Options: options,
+			},
+		},
+	}
+
+	answer := struct {
+		Organization string
+	}{}
+
+	err = survey.Ask(qs, &answer)
+	if err != nil {
+		return GitHubOrganization{}, err
+	}
+
+	return optionMap[answer.Organization], nil
+}
+
+// GetStateIndicator returns a colored emoji indicator for the codespace state
+func GetStateIndicator(state string) string {
+	switch state {
+	case "Available":
+		return "●"
+	case "Shutdown":
+		return "○"
+	default:
+		return "◐"
+	}
+}
+
+func PromptForCodespaceSelection(codespaces []GitHubCodespace) ([]GitHubCodespace, error) {
+	if len(codespaces) == 0 {
+		return nil, errors.New("no codespaces available")
+	}
+
+	optionMap := make(map[string]GitHubCodespace)
+	options := make([]string, 0, len(codespaces))
+
+	for _, cs := range codespaces {
+		// Format last used time
+		lastUsed := "Never"
+		if cs.LastUsedAt != nil && *cs.LastUsedAt != "" {
+			if t, err := time.Parse(time.RFC3339, *cs.LastUsedAt); err == nil {
+				lastUsed = t.Format("Mon 2006-01-02 15:04")
+			}
+		}
+
+		// Create display string with state indicator and last used info
+		stateIndicator := GetStateIndicator(cs.State)
+
+		displayName := fmt.Sprintf("%s %s (%s) - Last used: %s",
+			stateIndicator, cs.DisplayName, cs.Repository.FullName, lastUsed)
+
+		optionMap[displayName] = cs
+		options = append(options, displayName)
+	}
+
+	var qs = []*survey.Question{
+		{
+			Name: "codespaces",
+			Prompt: &survey.MultiSelect{
+				Message: "Select codespaces to delete (use space to select, enter to confirm):",
+				Options: options,
+			},
+		},
+	}
+
+	answer := struct {
+		Codespaces []string
+	}{}
+
+	err := survey.Ask(qs, &answer)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(answer.Codespaces) == 0 {
+		return nil, errors.New("no codespaces selected")
+	}
+
+	selectedCodespaces := make([]GitHubCodespace, 0, len(answer.Codespaces))
+	for _, selectedOption := range answer.Codespaces {
+		if cs, exists := optionMap[selectedOption]; exists {
+			selectedCodespaces = append(selectedCodespaces, cs)
+		}
+	}
+
+	return selectedCodespaces, nil
 }
 
 type GithubRepository struct {
@@ -331,4 +459,114 @@ func ListAllAcceptedAssignments(client *api.RESTClient, assignmentID int, perPag
 	}
 
 	return NewAcceptedAssignmentList(assignments), nil
+}
+
+type GitHubCodespacesResponse struct {
+	Codespaces []GitHubCodespace `json:"codespaces"`
+}
+
+type GitHubCodespace struct {
+	ID                     int                       `json:"id"`
+	Name                   string                    `json:"name"`
+	DisplayName            string                    `json:"display_name"`
+	State                  string                    `json:"state"`
+	Repository             GitHubCodespaceRepository `json:"repository"`
+	Owner                  GitHubCodespaceUser       `json:"owner"`
+	BillableOwner          GitHubCodespaceUser       `json:"billable_owner"`
+	Machine                GitHubCodespaceMachine    `json:"machine"`
+	Prebuild               bool                      `json:"prebuild"`
+	CreatedAt              string                    `json:"created_at"`
+	UpdatedAt              string                    `json:"updated_at"`
+	LastUsedAt             *string                   `json:"last_used_at"`
+	EnvironmentID          string                    `json:"environment_id"`
+	DevcontainerPath       string                    `json:"devcontainer_path"`
+	GitStatus              GitHubCodespaceGitStatus  `json:"git_status"`
+	IdleTimeoutMinutes     int                       `json:"idle_timeout_minutes"`
+	Location               string                    `json:"location"`
+	WebURL                 string                    `json:"web_url"`
+	URL                    string                    `json:"url"`
+	RetentionExpiresAt     *string                   `json:"retention_expires_at"`
+	RetentionPeriodMinutes int                       `json:"retention_period_minutes"`
+	PendingOperation       bool                      `json:"pending_operation"`
+}
+
+type GitHubCodespaceRepository struct {
+	ID          int                 `json:"id"`
+	Name        string              `json:"name"`
+	FullName    string              `json:"full_name"`
+	Owner       GitHubCodespaceUser `json:"owner"`
+	Private     bool                `json:"private"`
+	Description *string             `json:"description"`
+	HTMLURL     string              `json:"html_url"`
+	URL         string              `json:"url"`
+}
+
+type GitHubCodespaceUser struct {
+	Login     string `json:"login"`
+	ID        int    `json:"id"`
+	Type      string `json:"type"`
+	AvatarURL string `json:"avatar_url"`
+	HTMLURL   string `json:"html_url"`
+	SiteAdmin bool   `json:"site_admin"`
+}
+
+type GitHubCodespaceMachine struct {
+	Name                 string `json:"name"`
+	DisplayName          string `json:"display_name"`
+	OperatingSystem      string `json:"operating_system"`
+	StorageInBytes       int64  `json:"storage_in_bytes"`
+	MemoryInBytes        int64  `json:"memory_in_bytes"`
+	CPUs                 int    `json:"cpus"`
+	PrebuildAvailability string `json:"prebuild_availability"`
+}
+
+type GitHubCodespaceGitStatus struct {
+	Ahead                 int    `json:"ahead"`
+	Behind                int    `json:"behind"`
+	HasUnpushedChanges    bool   `json:"has_unpushed_changes"`
+	HasUncommittedChanges bool   `json:"has_uncommitted_changes"`
+	Ref                   string `json:"ref"`
+}
+
+type GitHubCodespaceEnvironment struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}
+
+type ContainerImageInfo struct {
+	Registry string `json:"registry"`
+	Image    string `json:"image"`
+	Tag      string `json:"tag"`
+}
+
+type RegistryTagsResponse struct {
+	Results []RegistryTag `json:"results"`
+}
+
+type RegistryTag struct {
+	Name        string    `json:"name"`
+	LastUpdated time.Time `json:"last_updated"`
+}
+
+// CodespaceVersionInfo holds version metadata extracted from a codespace container
+type CodespaceVersionInfo struct {
+	Version     string `json:"version"`
+	RefName     string `json:"refName"`
+	Revision    string `json:"revision"`
+	Digest      string `json:"digest"`
+	ImageID     string `json:"imageID"`
+	DefaultInfo string `json:"defaultInfo"`
+}
+
+func GetCodespacesForOrg(client *api.RESTClient, orgName string) ([]GitHubCodespace, error) {
+	var response GitHubCodespacesResponse
+
+	// Use the organization codespaces endpoint
+	endpoint := fmt.Sprintf("orgs/%s/codespaces", orgName)
+	err := client.Get(endpoint, &response)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch codespaces for org %s: %v", orgName, err)
+	}
+
+	return response.Codespaces, nil
 }
