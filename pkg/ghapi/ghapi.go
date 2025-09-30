@@ -180,25 +180,25 @@ func GetStateIndicator(state string) string {
 }
 
 func PromptForCodespaceSelection(codespaces []GitHubCodespace) ([]GitHubCodespace, error) {
-	// Filter out running codespaces - only show non-running ones
-	nonRunningCodespaces := make([]GitHubCodespace, 0)
+	// Filter out running codespaces and those with uncommitted/unpushed changes
+	cleanNonRunningCodespaces := make([]GitHubCodespace, 0)
 	for _, cs := range codespaces {
-		if cs.State != "Available" {
-			nonRunningCodespaces = append(nonRunningCodespaces, cs)
+		if cs.State != "Available" && !cs.GitStatus.HasUncommittedChanges && !cs.GitStatus.HasUnpushedChanges {
+			cleanNonRunningCodespaces = append(cleanNonRunningCodespaces, cs)
 		}
 	}
 
-	if len(nonRunningCodespaces) == 0 {
-		return nil, errors.New("no non-running codespaces available")
+	if len(cleanNonRunningCodespaces) == 0 {
+		return nil, errors.New("no clean non-running codespaces available")
 	}
 
 	optionMap := make(map[string]GitHubCodespace)
-	options := make([]string, 0, len(nonRunningCodespaces))
+	options := make([]string, 0, len(cleanNonRunningCodespaces))
 
 	// Calculate column widths for table alignment
 	maxNameWidth := len("NAME")       // Start with header width
 	maxRepoWidth := len("REPOSITORY") // Start with header width
-	for _, cs := range nonRunningCodespaces {
+	for _, cs := range cleanNonRunningCodespaces {
 		if len(cs.DisplayName) > maxNameWidth {
 			maxNameWidth = len(cs.DisplayName)
 		}
@@ -207,7 +207,7 @@ func PromptForCodespaceSelection(codespaces []GitHubCodespace) ([]GitHubCodespac
 		}
 	}
 
-	for _, cs := range nonRunningCodespaces {
+	for _, cs := range cleanNonRunningCodespaces {
 		// Format last used time
 		lastUsed := "Never"
 		if cs.LastUsedAt != nil && *cs.LastUsedAt != "" {
@@ -234,7 +234,7 @@ func PromptForCodespaceSelection(codespaces []GitHubCodespace) ([]GitHubCodespac
 		{
 			Name: "codespaces",
 			Prompt: &survey.MultiSelect{
-				Message: "Select non-running codespaces to delete:",
+				Message: "Select clean non-running codespaces to delete:",
 				Options: options,
 				VimMode: false,                                                                                   // Disable vim mode so ESC doesn't toggle it
 				Help:    "[Use arrows to move, space to select, <right> to all, <left> to none, type to filter]", // Remove default help to prevent duplication
