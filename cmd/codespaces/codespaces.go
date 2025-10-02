@@ -22,6 +22,10 @@ func NewCmdCodespaces(f *cmdutil.Factory) *cobra.Command {
 		
 			Manage codespaces owned by organizations, including listing and removing them.
 
+			When run inside an assignment folder, commands will only show codespaces for 
+			repositories belonging to that assignment. Otherwise, shows all codespaces 
+			for the organization.
+
 			The organization is looked up from the classroom metadata if it exists, 
 			otherwise you will be prompted to select an organization from your available 
 			organizations.`),
@@ -44,6 +48,9 @@ func NewCmdCodespacesList(f *cmdutil.Factory) *cobra.Command {
 		
 			Lists all codespaces owned by a specific organization, including their active 
 			state and machine information.
+
+			When run inside an assignment folder, only shows codespaces for repositories 
+			belonging to that assignment. Otherwise, shows all codespaces for the organization.
 
 			The organization is looked up from the classroom metadata if it exists, 
 			otherwise you will be prompted to select an organization from your available 
@@ -78,13 +85,46 @@ $ gh mmc codespaces list --org my-org`,
 				}
 			}
 
-			fmt.Printf("Fetching codespaces for organization: %s\n\n", orgName)
+			fmt.Printf("Fetching codespaces for organization: %s", orgName)
 
 			// Get codespaces for the organization
 			codespaces, err := ghapi.GetCodespacesForOrg(client, orgName)
 			if err != nil {
 				mmc.Fatal(fmt.Errorf("failed to get codespaces: %v", err))
 			}
+
+			// Check if we're in an assignment folder and filter accordingly
+			a, err := mmc.LoadAssignment()
+			if err == nil {
+				// We're in an assignment folder, filter codespaces by assignment repositories
+				fmt.Printf(" (filtered by assignment: %s)\n", a.Name)
+
+				// Get accepted assignments for this assignment
+				acceptedAssignmentList, err := ghapi.ListAllAcceptedAssignments(client, a.Id, 15)
+				if err != nil {
+					mmc.Fatal(fmt.Errorf("failed to get accepted assignments: %v", err))
+				}
+
+				// Create a map of repository full names for quick lookup
+				assignmentRepos := make(map[string]bool)
+				for _, acceptedAssignment := range acceptedAssignmentList.AcceptedAssignments {
+					assignmentRepos[acceptedAssignment.Repository.FullName] = true
+				}
+
+				// Filter codespaces to only include those from assignment repositories
+				var filteredCodespaces []ghapi.GitHubCodespace
+				for _, cs := range codespaces {
+					if assignmentRepos[cs.Repository.FullName] {
+						filteredCodespaces = append(filteredCodespaces, cs)
+					}
+				}
+				codespaces = filteredCodespaces
+			} else if !errors.Is(err, mmc.ErrAssignmentNotFound) {
+				mmc.Fatal(fmt.Errorf("failed to check assignment context: %v", err))
+			} else {
+				fmt.Println()
+			}
+			fmt.Println()
 
 			if len(codespaces) == 0 {
 				fmt.Printf("No codespaces found for organization %s\n", orgName)
@@ -183,6 +223,9 @@ func NewCmdCodespacesRm(f *cmdutil.Factory) *cobra.Command {
 		
 			Interactively select and remove codespaces for a specific organization.
 
+			When run inside an assignment folder, only shows codespaces for repositories 
+			belonging to that assignment. Otherwise, shows all codespaces for the organization.
+
 			This command will show you all available codespaces and allow you to 
 			select which ones to delete. You can select multiple codespaces at once.
 
@@ -222,13 +265,46 @@ $ gh mmc codespaces rm --org my-org --all`,
 				}
 			}
 
-			fmt.Printf("Fetching codespaces for organization: %s\n\n", orgName)
+			fmt.Printf("Fetching codespaces for organization: %s", orgName)
 
 			// Get codespaces for the organization
 			codespaces, err := ghapi.GetCodespacesForOrg(client, orgName)
 			if err != nil {
 				mmc.Fatal(fmt.Errorf("failed to get codespaces: %v", err))
 			}
+
+			// Check if we're in an assignment folder and filter accordingly
+			a, err := mmc.LoadAssignment()
+			if err == nil {
+				// We're in an assignment folder, filter codespaces by assignment repositories
+				fmt.Printf(" (filtered by assignment: %s)\n", a.Name)
+
+				// Get accepted assignments for this assignment
+				acceptedAssignmentList, err := ghapi.ListAllAcceptedAssignments(client, a.Id, 15)
+				if err != nil {
+					mmc.Fatal(fmt.Errorf("failed to get accepted assignments: %v", err))
+				}
+
+				// Create a map of repository full names for quick lookup
+				assignmentRepos := make(map[string]bool)
+				for _, acceptedAssignment := range acceptedAssignmentList.AcceptedAssignments {
+					assignmentRepos[acceptedAssignment.Repository.FullName] = true
+				}
+
+				// Filter codespaces to only include those from assignment repositories
+				var filteredCodespaces []ghapi.GitHubCodespace
+				for _, cs := range codespaces {
+					if assignmentRepos[cs.Repository.FullName] {
+						filteredCodespaces = append(filteredCodespaces, cs)
+					}
+				}
+				codespaces = filteredCodespaces
+			} else if !errors.Is(err, mmc.ErrAssignmentNotFound) {
+				mmc.Fatal(fmt.Errorf("failed to check assignment context: %v", err))
+			} else {
+				fmt.Println()
+			}
+			fmt.Println()
 
 			if len(codespaces) == 0 {
 				fmt.Printf("No codespaces found for organization %s\n", orgName)
