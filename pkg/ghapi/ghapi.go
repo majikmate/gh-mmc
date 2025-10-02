@@ -629,7 +629,7 @@ func GetCodespacesForOrg(client *api.RESTClient, orgName string) ([]GitHubCodesp
 		if response.TotalCount > 0 && len(allCodespaces) < response.TotalCount {
 			shouldContinue = true
 		}
-		
+
 		if !shouldContinue {
 			break
 		}
