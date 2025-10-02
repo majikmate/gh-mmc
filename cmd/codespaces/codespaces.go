@@ -267,7 +267,11 @@ $ gh mmc codespaces list --org my-org`,
 					displayName = displayName[:21] + "..."
 				}
 
+				// Strip organization prefix from repository name since all repos belong to the same org
 				repoName := cs.Repository.FullName
+				if orgPrefix := orgName + "/"; strings.HasPrefix(repoName, orgPrefix) {
+					repoName = repoName[len(orgPrefix):]
+				}
 				if len(repoName) > 34 {
 					repoName = repoName[:31] + "..."
 				}
@@ -540,7 +544,7 @@ $ gh mmc codespaces rm --org my-org --all`,
 				fmt.Println()
 
 				// Display in table format similar to interactive selection
-				displayCodespacesTable(selectedCodespaces)
+				displayCodespacesTable(selectedCodespaces, orgName)
 			} else {
 				// Prompt user to select codespaces to delete
 				var err error
@@ -668,7 +672,7 @@ func deleteSelectedCodespaces(client *api.RESTClient, orgName string, codespaces
 }
 
 // displayCodespacesTable displays codespaces in a formatted table similar to the interactive selection
-func displayCodespacesTable(codespaces []ghapi.GitHubCodespace) {
+func displayCodespacesTable(codespaces []ghapi.GitHubCodespace, orgName string) {
 	if len(codespaces) == 0 {
 		return
 	}
@@ -685,8 +689,14 @@ func displayCodespacesTable(codespaces []ghapi.GitHubCodespace) {
 		if len(cs.DisplayName) > maxNameWidth {
 			maxNameWidth = len(cs.DisplayName)
 		}
-		if len(cs.Repository.FullName) > maxRepoWidth {
-			maxRepoWidth = len(cs.Repository.FullName)
+
+		// Strip organization prefix for width calculation
+		repoDisplayName := cs.Repository.FullName
+		if orgPrefix := orgName + "/"; strings.HasPrefix(repoDisplayName, orgPrefix) {
+			repoDisplayName = repoDisplayName[len(orgPrefix):]
+		}
+		if len(repoDisplayName) > maxRepoWidth {
+			maxRepoWidth = len(repoDisplayName)
 		}
 
 		// Check user display name length (student name or GitHub username)
@@ -749,6 +759,12 @@ func displayCodespacesTable(codespaces []ghapi.GitHubCodespace) {
 		// Format git status
 		gitStatus := formatGitStatus(cs.GitStatus)
 
+		// Strip organization prefix from repository name
+		repoDisplayName := cs.Repository.FullName
+		if orgPrefix := orgName + "/"; strings.HasPrefix(repoDisplayName, orgPrefix) {
+			repoDisplayName = repoDisplayName[len(orgPrefix):]
+		}
+
 		// Handle nullable PrebuildAvailability
 		var availability string
 		if cs.Machine.PrebuildAvailability != nil {
@@ -760,7 +776,7 @@ func displayCodespacesTable(codespaces []ghapi.GitHubCodespace) {
 		fmt.Printf("%-*s  %-6s  %-*s  %-*s  %-8s  %-5s  %s\n",
 			maxNameWidth, cs.DisplayName,
 			gitStatus,
-			maxRepoWidth, cs.Repository.FullName,
+			maxRepoWidth, repoDisplayName,
 			maxUserWidth, displayUser,
 			idleTimeout,
 			prebuildInfo,
