@@ -257,10 +257,11 @@ func PromptForCodespaceSelection(codespaces []GitHubCodespace, orgName string, g
 		{
 			Name: "codespaces",
 			Prompt: &survey.MultiSelect{
-				Message: "Select clean non-running codespaces to delete:",
-				Options: options,
-				VimMode: false,                                                                                   // Disable vim mode so ESC doesn't toggle it
-				Help:    "[Use arrows to move, space to select, <right> to all, <left> to none, type to filter]", // Remove default help to prevent duplication
+				Message:  "Select clean non-running codespaces to delete:",
+				Options:  options,
+				PageSize: 20,                                                                                      // Show at least 20 items before scrolling
+				VimMode:  false,                                                                                   // Disable vim mode so ESC doesn't toggle it
+				Help:     "[Use arrows to move, space to select, <right> to all, <left> to none, type to filter]", // Remove default help to prevent duplication
 			},
 		},
 	}
