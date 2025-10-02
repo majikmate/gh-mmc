@@ -3,6 +3,7 @@ package codespaces
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -178,10 +179,68 @@ $ gh mmc codespaces list --org my-org`,
 			}
 
 			// Print header with fixed-width formatting to handle emoji alignment
-			fmt.Printf("%-25s %-6s %-35s %-20s %-42s %-8s %-5s %s\n",
-				"NAME", "GIT", "REPOSITORY", "OWNER", "MACHINE", "IDLE", "PRE", "LAST USED")
+			fmt.Printf("%-25s %-6s %-35s %-25s %-42s %-8s %-5s %s\n",
+				"NAME", "GIT", "REPOSITORY", "USER", "MACHINE", "IDLE", "PRE", "LAST USED")
 
+			// Load classroom context once for student name lookups
+			classroom, classroomErr := mmc.LoadClassroom()
+
+			// Create a slice to hold codespace data with student names for sorting
+			type codespaceWithStudent struct {
+				codespace   ghapi.GitHubCodespace
+				studentName string
+			}
+
+			var codespacesList []codespaceWithStudent
+
+			// Populate the list with student names
 			for _, cs := range codespaces {
+				var studentName string
+				if classroomErr == nil {
+					if name, err := classroom.GetRepoName(cs.Owner.Login); err == nil {
+						studentName = name
+					}
+				}
+				codespacesList = append(codespacesList, codespaceWithStudent{
+					codespace:   cs,
+					studentName: studentName,
+				})
+			}
+
+			// Sort by student name (empty names go to the end)
+			sort.Slice(codespacesList, func(i, j int) bool {
+				// If one student name is empty and the other isn't, put empty ones at the end
+				if codespacesList[i].studentName == "" && codespacesList[j].studentName != "" {
+					return false
+				}
+				if codespacesList[i].studentName != "" && codespacesList[j].studentName == "" {
+					return true
+				}
+				// If both student names are empty, sort by owner (GitHub username)
+				if codespacesList[i].studentName == "" && codespacesList[j].studentName == "" {
+					return codespacesList[i].codespace.Owner.Login < codespacesList[j].codespace.Owner.Login
+				}
+				// Both are non-empty, sort alphabetically by student name
+				return codespacesList[i].studentName < codespacesList[j].studentName
+			})
+
+			for _, item := range codespacesList {
+				cs := item.codespace
+				studentName := item.studentName
+
+				// Use student name if available, otherwise use GitHub username
+				var displayUser string
+				if studentName != "" {
+					displayUser = studentName
+				} else {
+					displayUser = cs.Owner.Login
+				}
+
+				// Truncate user name if too long
+				if len(displayUser) > 24 {
+					displayUser = displayUser[:21] + "..."
+				}
+
 				// Format machine information with consistent padding
 				memoryGB := cs.Machine.MemoryInBytes / (1024 * 1024 * 1024)
 				storageGB := cs.Machine.StorageInBytes / (1024 * 1024 * 1024)
@@ -233,12 +292,12 @@ $ gh mmc codespaces list --org my-org`,
 					colorEnd = "\033[0m"    // Reset
 				}
 
-				fmt.Printf("%s%-25s %-6s %-35s %-20s %-42s %-8s %-5s %s%s\n",
+				fmt.Printf("%s%-25s %-6s %-35s %-25s %-42s %-8s %-5s %s%s\n",
 					colorStart,
 					displayName,
 					gitStatus,
 					repoName,
-					cs.Owner.Login,
+					displayUser,
 					machineInfo,
 					idleTimeout,
 					prebuildInfo,
@@ -401,6 +460,54 @@ $ gh mmc codespaces rm --org my-org --all`,
 			if len(codespaces) == 0 {
 				fmt.Printf("No codespaces found for organization %s\n", orgName)
 				return
+			}
+
+			// Sort codespaces by student name for consistent ordering
+			classroom, classroomErr := mmc.LoadClassroom()
+
+			// Create a slice to hold codespace data with student names for sorting
+			type codespaceWithStudent struct {
+				codespace   ghapi.GitHubCodespace
+				studentName string
+			}
+
+			var codespacesList []codespaceWithStudent
+
+			// Populate the list with student names
+			for _, cs := range codespaces {
+				var studentName string
+				if classroomErr == nil {
+					if name, err := classroom.GetRepoName(cs.Owner.Login); err == nil {
+						studentName = name
+					}
+				}
+				codespacesList = append(codespacesList, codespaceWithStudent{
+					codespace:   cs,
+					studentName: studentName,
+				})
+			}
+
+			// Sort by student name (empty names go to the end)
+			sort.Slice(codespacesList, func(i, j int) bool {
+				// If one student name is empty and the other isn't, put empty ones at the end
+				if codespacesList[i].studentName == "" && codespacesList[j].studentName != "" {
+					return false
+				}
+				if codespacesList[i].studentName != "" && codespacesList[j].studentName == "" {
+					return true
+				}
+				// If both student names are empty, sort by owner (GitHub username)
+				if codespacesList[i].studentName == "" && codespacesList[j].studentName == "" {
+					return codespacesList[i].codespace.Owner.Login < codespacesList[j].codespace.Owner.Login
+				}
+				// Both are non-empty, sort alphabetically by student name
+				return codespacesList[i].studentName < codespacesList[j].studentName
+			})
+
+			// Extract sorted codespaces back to the original slice
+			codespaces = make([]ghapi.GitHubCodespace, len(codespacesList))
+			for i, item := range codespacesList {
+				codespaces[i] = item.codespace
 			}
 
 			var selectedCodespaces []ghapi.GitHubCodespace
@@ -566,9 +673,13 @@ func displayCodespacesTable(codespaces []ghapi.GitHubCodespace) {
 		return
 	}
 
+	// Load classroom context once for student name lookups
+	classroom, classroomErr := mmc.LoadClassroom()
+
 	// Calculate column widths for table alignment
 	maxNameWidth := len("NAME")       // Start with header width
 	maxRepoWidth := len("REPOSITORY") // Start with header width
+	maxUserWidth := len("USER")       // Start with header width
 
 	for _, cs := range codespaces {
 		if len(cs.DisplayName) > maxNameWidth {
@@ -577,28 +688,53 @@ func displayCodespacesTable(codespaces []ghapi.GitHubCodespace) {
 		if len(cs.Repository.FullName) > maxRepoWidth {
 			maxRepoWidth = len(cs.Repository.FullName)
 		}
+
+		// Check user display name length (student name or GitHub username)
+		var displayUser string
+		if classroomErr == nil {
+			if name, err := classroom.GetRepoName(cs.Owner.Login); err == nil {
+				displayUser = name
+			}
+		}
+		if displayUser == "" {
+			displayUser = cs.Owner.Login
+		}
+		if len(displayUser) > maxUserWidth {
+			maxUserWidth = len(displayUser)
+		}
 	}
 
 	// Print table header
-	fmt.Printf("%-*s  %-6s  %-*s  %-8s  %-5s  %s\n",
+	fmt.Printf("%-*s  %-6s  %-*s  %-*s  %-8s  %-5s  %s\n",
 		maxNameWidth, "NAME",
 		"GIT",
 		maxRepoWidth, "REPOSITORY",
+		maxUserWidth, "USER",
 		"IDLE",
 		"PRE",
 		"LAST USED")
 
 	// Print separator line
-	fmt.Printf("%s  %s  %s  %s  %s  %s\n",
+	fmt.Printf("%s  %s  %s  %s  %s  %s  %s\n",
 		strings.Repeat("-", maxNameWidth),
 		strings.Repeat("-", 6),
 		strings.Repeat("-", maxRepoWidth),
+		strings.Repeat("-", maxUserWidth),
 		strings.Repeat("-", 8),
 		strings.Repeat("-", 5),
-		strings.Repeat("-", 19)) // Length of "Mon 2006-01-02 15:04"
-
-	// Print each codespace row
+		strings.Repeat("-", 19)) // Length of "Mon 2006-01-02 15:04"	// Print each codespace row
 	for _, cs := range codespaces {
+		// Get user display name (student name if available, otherwise GitHub username)
+		var displayUser string
+		if classroomErr == nil {
+			if name, err := classroom.GetRepoName(cs.Owner.Login); err == nil {
+				displayUser = name
+			}
+		}
+		if displayUser == "" {
+			displayUser = cs.Owner.Login
+		}
+
 		// Format last used time
 		lastUsed := "Never"
 		if cs.LastUsedAt != nil && *cs.LastUsedAt != "" {
@@ -621,10 +757,11 @@ func displayCodespacesTable(codespaces []ghapi.GitHubCodespace) {
 		prebuildInfo := formatPrebuild(cs.Prebuild, availability)
 
 		// Print formatted row
-		fmt.Printf("%-*s  %-6s  %-*s  %-8s  %-5s  %s\n",
+		fmt.Printf("%-*s  %-6s  %-*s  %-*s  %-8s  %-5s  %s\n",
 			maxNameWidth, cs.DisplayName,
 			gitStatus,
 			maxRepoWidth, cs.Repository.FullName,
+			maxUserWidth, displayUser,
 			idleTimeout,
 			prebuildInfo,
 			lastUsed)
