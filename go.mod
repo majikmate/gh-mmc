@@ -5,7 +5,7 @@ go 1.24.7
 require (
 	github.com/AlecAivazis/survey/v2 v2.3.7
 	github.com/MakeNowJust/heredoc v1.0.0
-	github.com/cli/cli/v2 v2.80.0
+	github.com/cli/cli/v2 v2.81.0
 	github.com/cli/go-gh/v2 v2.12.2
 	github.com/spf13/cobra v1.10.1
 	github.com/xuri/excelize/v2 v2.9.2-0.20250929062450-1d381d76931f
