@@ -179,7 +179,7 @@ func GetStateIndicator(state string) string {
 	}
 }
 
-func PromptForCodespaceSelection(codespaces []GitHubCodespace) ([]GitHubCodespace, error) {
+func PromptForCodespaceSelection(codespaces []GitHubCodespace, orgName string, getUserDisplayName func(string) string) ([]GitHubCodespace, error) {
 	// Filter out running codespaces and those with uncommitted/unpushed changes
 	cleanNonRunningCodespaces := make([]GitHubCodespace, 0)
 	for _, cs := range codespaces {
@@ -198,12 +198,25 @@ func PromptForCodespaceSelection(codespaces []GitHubCodespace) ([]GitHubCodespac
 	// Calculate column widths for table alignment
 	maxNameWidth := len("NAME")       // Start with header width
 	maxRepoWidth := len("REPOSITORY") // Start with header width
+	maxUserWidth := len("USER")       // Start with header width
 	for _, cs := range cleanNonRunningCodespaces {
 		if len(cs.DisplayName) > maxNameWidth {
 			maxNameWidth = len(cs.DisplayName)
 		}
-		if len(cs.Repository.FullName) > maxRepoWidth {
-			maxRepoWidth = len(cs.Repository.FullName)
+
+		// Strip organization prefix for width calculation
+		repoDisplayName := cs.Repository.FullName
+		if orgPrefix := orgName + "/"; strings.HasPrefix(repoDisplayName, orgPrefix) {
+			repoDisplayName = repoDisplayName[len(orgPrefix):]
+		}
+		if len(repoDisplayName) > maxRepoWidth {
+			maxRepoWidth = len(repoDisplayName)
+		}
+
+		// Calculate user display name width
+		userDisplayName := getUserDisplayName(cs.Owner.Login)
+		if len(userDisplayName) > maxUserWidth {
+			maxUserWidth = len(userDisplayName)
 		}
 	}
 
@@ -219,10 +232,20 @@ func PromptForCodespaceSelection(codespaces []GitHubCodespace) ([]GitHubCodespac
 		// Format idle timeout
 		idleTimeout := fmt.Sprintf("%dm", cs.IdleTimeoutMinutes)
 
-		// Create table-formatted display string (no state indicator)
-		displayName := fmt.Sprintf("%-*s  %-*s  %-s  %s",
+		// Strip organization prefix from repository name
+		repoDisplayName := cs.Repository.FullName
+		if orgPrefix := orgName + "/"; strings.HasPrefix(repoDisplayName, orgPrefix) {
+			repoDisplayName = repoDisplayName[len(orgPrefix):]
+		}
+
+		// Get user display name
+		userDisplayName := getUserDisplayName(cs.Owner.Login)
+
+		// Create table-formatted display string with user information
+		displayName := fmt.Sprintf("%-*s  %-*s  %-*s  %-s  %s",
 			maxNameWidth, cs.DisplayName,
-			maxRepoWidth, cs.Repository.FullName,
+			maxRepoWidth, repoDisplayName,
+			maxUserWidth, userDisplayName,
 			idleTimeout,
 			lastUsed)
 

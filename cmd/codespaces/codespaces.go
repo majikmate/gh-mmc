@@ -548,7 +548,18 @@ $ gh mmc codespaces rm --org my-org --all`,
 			} else {
 				// Prompt user to select codespaces to delete
 				var err error
-				selectedCodespaces, err = ghapi.PromptForCodespaceSelection(codespaces)
+
+				// Create getUserDisplayName callback function
+				getUserDisplayName := func(githubUsername string) string {
+					if classroomErr == nil {
+						if studentName, err := classroom.GetRepoName(githubUsername); err == nil && studentName != "" {
+							return studentName
+						}
+					}
+					return githubUsername
+				}
+
+				selectedCodespaces, err = ghapi.PromptForCodespaceSelection(codespaces, orgName, getUserDisplayName)
 				if err != nil {
 					mmc.Fatal(fmt.Errorf("failed to select codespaces: %v", err))
 				}
