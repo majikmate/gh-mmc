@@ -515,6 +515,7 @@ func ListAllAcceptedAssignments(client *api.RESTClient, assignmentID int, perPag
 }
 
 type GitHubCodespacesResponse struct {
+	TotalCount int               `json:"total_count"`
 	Codespaces []GitHubCodespace `json:"codespaces"`
 }
 
@@ -591,24 +592,50 @@ func GetCodespacesForOrg(client *api.RESTClient, orgName string) ([]GitHubCodesp
 		return nil, fmt.Errorf("failed to verify organization %s: %v", orgName, err)
 	}
 
-	var response GitHubCodespacesResponse
+	var allCodespaces []GitHubCodespace
+	page := 1
+	perPage := 100 // Request 100, but GitHub may limit to 50
 
-	// Use the organization codespaces endpoint
-	endpoint := fmt.Sprintf("orgs/%s/codespaces", orgName)
-	err = client.Get(endpoint, &response)
-	if err != nil {
-		// Check if it's a 404 error to provide more helpful information
-		if strings.Contains(err.Error(), "404") || strings.Contains(err.Error(), "Not Found") {
-			return nil, fmt.Errorf("failed to fetch codespaces for org %s: organization exists but codespaces endpoint not available. This could mean:\n"+
-				"1. GitHub Codespaces is not enabled for this organization\n"+
-				"2. Your GitHub token doesn't have 'admin:org' scope\n"+
-				"3. You don't have permission to manage codespaces in this organization\n\n"+
-				"To fix permission issues, try refreshing your GitHub CLI authentication:\n"+
-				"   gh auth refresh --scopes admin:org\n\n"+
-				"Original error: %v", orgName, err)
+	for {
+		var response GitHubCodespacesResponse
+
+		// Use the organization codespaces endpoint with pagination
+		endpoint := fmt.Sprintf("orgs/%s/codespaces?page=%d&per_page=%d", orgName, page, perPage)
+		err = client.Get(endpoint, &response)
+		if err != nil {
+			// Check if it's a 404 error to provide more helpful information
+			if strings.Contains(err.Error(), "404") || strings.Contains(err.Error(), "Not Found") {
+				return nil, fmt.Errorf("failed to fetch codespaces for org %s: organization exists but codespaces endpoint not available. This could mean:\n"+
+					"1. GitHub Codespaces is not enabled for this organization\n"+
+					"2. Your GitHub token doesn't have 'admin:org' scope\n"+
+					"3. You don't have permission to manage codespaces in this organization\n\n"+
+					"To fix permission issues, try refreshing your GitHub CLI authentication:\n"+
+					"   gh auth refresh --scopes admin:org\n\n"+
+					"Original error: %v", orgName, err)
+			}
+			return nil, fmt.Errorf("failed to fetch codespaces for org %s: %v", orgName, err)
 		}
-		return nil, fmt.Errorf("failed to fetch codespaces for org %s: %v", orgName, err)
+
+		// Add the codespaces from this page to our collection
+		allCodespaces = append(allCodespaces, response.Codespaces...)
+
+		// Continue fetching if:
+		// 1. We got exactly the maximum number of items (likely means there are more)
+		// 2. Or we have a total_count and haven't reached it yet
+		shouldContinue := false
+		if len(response.Codespaces) >= 50 { // GitHub appears to limit to 50 per page
+			shouldContinue = true
+		}
+		if response.TotalCount > 0 && len(allCodespaces) < response.TotalCount {
+			shouldContinue = true
+		}
+		
+		if !shouldContinue {
+			break
+		}
+
+		page++
 	}
 
-	return response.Codespaces, nil
+	return allCodespaces, nil
 }
