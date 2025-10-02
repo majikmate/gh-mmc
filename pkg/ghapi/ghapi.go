@@ -310,6 +310,34 @@ type GitHubAssignmentList struct {
 	Count           int
 }
 
+func ListAllAssignments(client *api.RESTClient, classroomID int) ([]GitHubAssignment, error) {
+	var allAssignments []GitHubAssignment
+	page := 1
+	perPage := 100
+
+	for {
+		assignmentList, err := ListAssignments(client, classroomID, page, perPage)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(assignmentList.Assignments) == 0 {
+			break
+		}
+
+		allAssignments = append(allAssignments, assignmentList.Assignments...)
+
+		// If we got fewer assignments than the page size, we've reached the end
+		if len(assignmentList.Assignments) < perPage {
+			break
+		}
+
+		page++
+	}
+
+	return allAssignments, nil
+}
+
 func GetAssignment(client *api.RESTClient, assignmentID int) (GitHubAssignment, error) {
 	var response GitHubAssignment
 	err := client.Get(fmt.Sprintf("assignments/%v", assignmentID), &response)
