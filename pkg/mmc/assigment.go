@@ -15,7 +15,7 @@ type assignment struct {
 }
 
 var (
-	ErrAssignmentNotFound = errors.New("no assigment found: run `gh mmc clone` to clone an assignment or change to a folder that contains an assignment")
+	ErrAssignmentNotFound = errors.New("no assigment found: run `gh mmc pull` to clone an assignment or change to a folder that contains an assignment")
 )
 
 func IsAssignmentFolder() (bool, error) {

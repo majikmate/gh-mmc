@@ -2,7 +2,7 @@
 
 # majikmate Classroom
 
-This extension is an opinionated [GitHub Classroom](https://classroom.github.com) extension for GitHub CLI to easily work with GitHub Classrooms and student repos. Currently, its main purpose is to clone GitHub Classroom assignment and the starter repo as well as to synch back changes from the starter repo to the student repos.
+This extension is an opinionated [GitHub Classroom](https://classroom.github.com) extension for GitHub CLI to easily work with GitHub Classrooms and student repos. Currently, its main purpose is to clone and pull GitHub Classroom assignments and starter repos as well as to sync changes from the starter repo to the student repos.
 
 # Installation
 - Install the gh cli
