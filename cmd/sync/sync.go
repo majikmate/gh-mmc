@@ -3,6 +3,7 @@ package sync
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/MakeNowJust/heredoc"
 	"github.com/cli/cli/v2/pkg/cmdutil"
@@ -79,23 +80,46 @@ func NewCmdSync(f *cmdutil.Factory) *cobra.Command {
 				if err != nil {
 					//Don't bail on an error the repo could have changes preventing
 					//a pull, continue with rest of repos
-					fmt.Println(err)
+					repoURL := fmt.Sprintf("https://github.com/%s", acceptedAssignment.Repository.FullName)
+					errMsg := fmt.Sprintf("Failed to sync %s (%s): %v", repoName, repoURL, err)
+					syncErrors = append(syncErrors, errMsg)
+					if verbose {
+						fmt.Println(errMsg)
+					} else {
+						fmt.Printf("Failed to sync: %s (%s)\n", repoName, repoURL)
+					}
 					continue
 				}
-				fmt.Printf("Synchronized: %s (%s)\n", repoName, acceptedAssignment.Repository.FullName)
+				repoURL := fmt.Sprintf("https://github.com/%s", acceptedAssignment.Repository.FullName)
+				fmt.Printf("Synchronized: %s (%s)\n", repoName, repoURL)
 				totalSyched++
 			}
 			if len(syncErrors) > 0 {
-				fmt.Println("Some repositories failed to sync.")
+				fmt.Printf("\n%d repositories failed to sync:\n", len(syncErrors))
 				if !verbose {
-					fmt.Println("Run with --verbose flag to see more details")
+					fmt.Println("Run with --verbose flag to see detailed error messages")
+					for _, errMsg := range syncErrors {
+						// Extract just the repo name from the error message for summary
+						prefix := "Failed to sync "
+						if len(errMsg) > len(prefix) && errMsg[:len(prefix)] == prefix {
+							remaining := errMsg[len(prefix):]
+							if parenIdx := strings.Index(remaining, " ("); parenIdx > 0 {
+								repoName := remaining[:parenIdx]
+								fmt.Printf("  - %s\n", repoName)
+							} else {
+								fmt.Printf("  - %s\n", remaining)
+							}
+						}
+					}
 				} else {
 					for _, errMsg := range syncErrors {
-						fmt.Println(errMsg)
+						fmt.Printf("  %s\n", errMsg)
 					}
 				}
+				fmt.Printf("\nSuccessfully synced %d out of %d repositories.\n", totalSyched, totalSyched+len(syncErrors))
+			} else {
+				fmt.Printf("\nSuccessfully synced all %d repositories.\n", totalSyched)
 			}
-			fmt.Printf("Synched %v repos.\n", totalSyched)
 		},
 	}
 
