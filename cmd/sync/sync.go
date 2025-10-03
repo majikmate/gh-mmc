@@ -80,18 +80,16 @@ func NewCmdSync(f *cmdutil.Factory) *cobra.Command {
 				if err != nil {
 					//Don't bail on an error the repo could have changes preventing
 					//a pull, continue with rest of repos
-					repoURL := fmt.Sprintf("https://github.com/%s", acceptedAssignment.Repository.FullName)
-					errMsg := fmt.Sprintf("Failed to sync %s (%s): %v", repoName, repoURL, err)
+					errMsg := fmt.Sprintf("Failed to sync %s (%s): %v", repoName, acceptedAssignment.Repository.HtmlUrl, err)
 					syncErrors = append(syncErrors, errMsg)
 					if verbose {
 						fmt.Println(errMsg)
 					} else {
-						fmt.Printf("Failed to sync: %s (%s)\n", repoName, repoURL)
+						fmt.Printf("Failed to sync: %s (%s)\n", repoName, acceptedAssignment.Repository.HtmlUrl)
 					}
 					continue
 				}
-				repoURL := fmt.Sprintf("https://github.com/%s", acceptedAssignment.Repository.FullName)
-				fmt.Printf("Synchronized: %s (%s)\n", repoName, repoURL)
+				fmt.Printf("Synchronized: %s (%s)\n", repoName, acceptedAssignment.Repository.HtmlUrl)
 				totalSyched++
 			}
 			if len(syncErrors) > 0 {
