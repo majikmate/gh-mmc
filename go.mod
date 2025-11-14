@@ -1,6 +1,6 @@
 module github.com/majikmate/gh-mmc
 
-go 1.25.0
+go 1.25.4
 
 require (
 	github.com/AlecAivazis/survey/v2 v2.3.7
