@@ -36,27 +36,36 @@ func NewAssignment() *assignment {
 	return &assignment{}
 }
 
-func LoadAssignment() (*assignment, error) {
+// FindAssignmentFolder searches upwards from the current directory to find the assignment folder root
+// Returns the absolute path to the assignment folder, or an error if not found
+func FindAssignmentFolder() (string, error) {
 	currentDir, err := os.Getwd()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get current directory: %v", err)
+		return "", fmt.Errorf("failed to get current directory: %v", err)
 	}
 
-	var p string
 	for {
-		p = filepath.Join(currentDir, mmcFolder, assigmentFile)
+		p := filepath.Join(currentDir, mmcFolder, assigmentFile)
 		if _, err := os.Stat(p); err == nil {
-			break
+			return currentDir, nil
 		}
 
 		parentDir := filepath.Dir(currentDir)
 		if parentDir == currentDir {
-			return nil, ErrAssignmentNotFound
+			return "", ErrAssignmentNotFound
 		}
 
 		currentDir = parentDir
 	}
+}
 
+func LoadAssignment() (*assignment, error) {
+	assignmentFolder, err := FindAssignmentFolder()
+	if err != nil {
+		return nil, err
+	}
+
+	p := filepath.Join(assignmentFolder, mmcFolder, assigmentFile)
 	f, err := os.Open(p)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open %s file: %v", p, err)

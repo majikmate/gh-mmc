@@ -3,6 +3,7 @@ package sync
 import (
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/MakeNowJust/heredoc"
@@ -36,6 +37,15 @@ func NewCmdSync(f *cmdutil.Factory) *cobra.Command {
 			select a classroom.`),
 		Example: `$ gh mmc sync`,
 		Run: func(cmd *cobra.Command, args []string) {
+			// Save the starting directory to return to it at the end
+			startingDir, err := os.Getwd()
+			if err != nil {
+				mmc.Fatal(fmt.Errorf("failed to get current directory: %v", err))
+			}
+			defer func() {
+				_ = os.Chdir(startingDir)
+			}()
+
 			client, err := api.DefaultRESTClient()
 			if err != nil {
 				mmc.Fatal(err)

@@ -33,12 +33,15 @@ func NewCmdPull(f *cmdutil.Factory) *cobra.Command {
 			This command will:
 			- Clone repositories that don't exist locally
 			- Pull updates for repositories that are already cloned
-			- Handle both starter code repository (.main folder) and student repositories
+			- Handle both starter code repository (in a folder named after the classroom) and student repositories
 			- Create assignment folder if running from classroom folder
 
 			The command looks for repositories in the current directory. If a repository 
 			doesn't exist locally, it will be cloned first. If it exists, the latest 
 			changes will be pulled from the default branch.
+			
+			The starter code repository will be cloned into a folder named after the classroom
+			(converted to lowercase). You can override this with the --starter-folder flag.
 			
 			The command can be run within the folder of an assignment, in which case the
 			assignment-id is automatically detected. If the assignment-id is known, it can 
@@ -46,6 +49,15 @@ func NewCmdPull(f *cmdutil.Factory) *cobra.Command {
 			select a classroom.`),
 		Example: `$ gh mmc pull`,
 		Run: func(cmd *cobra.Command, args []string) {
+			// Save the starting directory to return to it at the end
+			startingDir, err := os.Getwd()
+			if err != nil {
+				mmc.Fatal(fmt.Errorf("failed to get current directory: %v", err))
+			}
+			defer func() {
+				_ = os.Chdir(startingDir)
+			}()
+
 			client, err := api.DefaultRESTClient()
 			if err != nil {
 				mmc.Fatal(err)
@@ -56,24 +68,33 @@ func NewCmdPull(f *cmdutil.Factory) *cobra.Command {
 				mmc.Fatal(err)
 			}
 
-			isClassroomFolder, err := mmc.IsClassroomFolder()
-			if err != nil {
-				mmc.Fatal(err)
-			}
-
-			if isAssignmentFolder, err = mmc.IsAssignmentFolder(); err == nil && isAssignmentFolder {
+			// Try to find assignment folder (searches upward from current directory)
+			assignmentFolder, err := mmc.FindAssignmentFolder()
+			if err == nil {
+				// We're inside an assignment folder hierarchy
+				isAssignmentFolder = true
 				a, err := mmc.LoadAssignment()
 				if err != nil {
 					mmc.Fatal(err)
 				}
 				aId = a.Id
-			}
-			if err != nil {
-				mmc.Fatal(err)
-			}
-
-			if !isClassroomFolder && !isAssignmentFolder {
-				mmc.Fatal("No classroom or assignment found. `gh mmc pull` should either be run from within a classroom folder or from within an assignment folder. Run `gh mmc init` to initialize a classroom folder or change to an initialized classroom folder.")
+				// Navigate to the assignment folder root
+				err = os.Chdir(assignmentFolder)
+				if err != nil {
+					mmc.Fatal(fmt.Errorf("failed to change to assignment directory: %v", err))
+				}
+			} else {
+				// Not in assignment folder, check if we're in classroom folder
+				classroomFolder, err := mmc.FindClassroomFolder()
+				if err != nil {
+					mmc.Fatal("No classroom or assignment found. Run `gh mmc init` to initialize a classroom folder or change to a classroom/assignment folder.")
+				}
+				// Navigate to classroom folder root
+				err = os.Chdir(classroomFolder)
+				if err != nil {
+					mmc.Fatal(fmt.Errorf("failed to change to classroom directory: %v", err))
+				}
+				isAssignmentFolder = false
 			}
 
 			if aId == 0 {
@@ -142,7 +163,7 @@ func NewCmdPull(f *cmdutil.Factory) *cobra.Command {
 			// Clone starter code repository if it exists and isn't already cloned
 			if assignment.StarterCodeRepository.Id != 0 {
 				if starterFolder == "" {
-					starterFolder = ".main"
+					starterFolder = strings.ToLower(assignment.GitHubClassroom.Name)
 				}
 				starterPath := filepath.Join(currentDir, starterFolder)
 
@@ -266,7 +287,7 @@ func NewCmdPull(f *cmdutil.Factory) *cobra.Command {
 	}
 
 	cmd.Flags().IntVarP(&aId, "assignment-id", "a", 0, "ID of the assignment")
-	cmd.Flags().StringVarP(&starterFolder, "starter-folder", "s", "", "name of the folder the starter code shall be cloned to")
+	cmd.Flags().StringVarP(&starterFolder, "starter-folder", "s", "", "name of the folder the starter code shall be cloned to (defaults to classroom name in lowercase)")
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose error output")
 
 	return cmd

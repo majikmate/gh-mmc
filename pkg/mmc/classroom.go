@@ -64,27 +64,36 @@ func NewClassroom() *mmc {
 	return &mmc{}
 }
 
-func LoadClassroom() (*mmc, error) {
+// FindClassroomFolder searches upwards from the current directory to find the classroom folder root
+// Returns the absolute path to the classroom folder, or an error if not found
+func FindClassroomFolder() (string, error) {
 	currentDir, err := os.Getwd()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get current directory: %v", err)
+		return "", fmt.Errorf("failed to get current directory: %v", err)
 	}
 
-	var p string
 	for {
-		p = filepath.Join(currentDir, mmcFolder, classroomFile)
+		p := filepath.Join(currentDir, mmcFolder, classroomFile)
 		if _, err := os.Stat(p); err == nil {
-			break
+			return currentDir, nil
 		}
 
 		parentDir := filepath.Dir(currentDir)
 		if parentDir == currentDir {
-			return nil, ErrClassroomNotFound
+			return "", ErrClassroomNotFound
 		}
 
 		currentDir = parentDir
 	}
+}
 
+func LoadClassroom() (*mmc, error) {
+	classroomFolder, err := FindClassroomFolder()
+	if err != nil {
+		return nil, err
+	}
+
+	p := filepath.Join(classroomFolder, mmcFolder, classroomFile)
 	file, err := os.Open(p)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open %s file: %v", p, err)

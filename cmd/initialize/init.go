@@ -3,6 +3,7 @@ package initialize
 import (
 	"errors"
 	"fmt"
+	"os"
 
 	"github.com/MakeNowJust/heredoc"
 	"github.com/cli/cli/v2/pkg/cmdutil"
@@ -34,6 +35,15 @@ func NewCmdInit(f *cmdutil.Factory) *cobra.Command {
 			user will be prompted to select a classroom.`),
 		Example: `$ gh mmc init`,
 		Run: func(cmd *cobra.Command, args []string) {
+			// Save the starting directory to return to it at the end
+			startingDir, err := os.Getwd()
+			if err != nil {
+				mmc.Fatal(fmt.Errorf("failed to get current directory: %v", err))
+			}
+			defer func() {
+				_ = os.Chdir(startingDir)
+			}()
+
 			client, err := api.DefaultRESTClient()
 			if err != nil {
 				mmc.Fatal(fmt.Errorf("failed to create gh client: %v", err))
