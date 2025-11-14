@@ -40,8 +40,8 @@ func NewCmdPull(f *cmdutil.Factory) *cobra.Command {
 			doesn't exist locally, it will be cloned first. If it exists, the latest 
 			changes will be pulled from the default branch.
 			
-			The starter code repository will be cloned into a folder named after the classroom
-			(converted to lowercase). You can override this with the --starter-folder flag.
+			The starter code repository will be cloned into a folder named after the classroom.
+			You can override this with the --starter-folder flag.
 			
 			The command can be run within the folder of an assignment, in which case the
 			assignment-id is automatically detected. If the assignment-id is known, it can 
@@ -163,7 +163,7 @@ func NewCmdPull(f *cmdutil.Factory) *cobra.Command {
 			// Clone starter code repository if it exists and isn't already cloned
 			if assignment.StarterCodeRepository.Id != 0 {
 				if starterFolder == "" {
-					starterFolder = strings.ToLower(assignment.GitHubClassroom.Name)
+					starterFolder = assignment.GitHubClassroom.Name
 				}
 				starterPath := filepath.Join(currentDir, starterFolder)
 
@@ -287,7 +287,7 @@ func NewCmdPull(f *cmdutil.Factory) *cobra.Command {
 	}
 
 	cmd.Flags().IntVarP(&aId, "assignment-id", "a", 0, "ID of the assignment")
-	cmd.Flags().StringVarP(&starterFolder, "starter-folder", "s", "", "name of the folder the starter code shall be cloned to (defaults to classroom name in lowercase)")
+	cmd.Flags().StringVarP(&starterFolder, "starter-folder", "s", "", "name of the folder the starter code shall be cloned to (defaults to classroom name)")
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose error output")
 
 	return cmd
