@@ -507,7 +507,7 @@ func showDiffForAssignment(pair StudentPair, assignment AssignmentDetail, thresh
 		if err != nil {
 			// diff returns non-zero when files differ, which is expected
 			if len(output) > 0 {
-				fmt.Println(string(output))
+				printColoredDiff(string(output))
 			} else {
 				fmt.Printf("Error running diff: %v\n", err)
 			}
@@ -518,4 +518,33 @@ func showDiffForAssignment(pair StudentPair, assignment AssignmentDetail, thresh
 	}
 
 	fmt.Printf("\n%s\n", strings.Repeat("=", 80))
+}
+
+// printColoredDiff prints diff output with colors
+func printColoredDiff(diffOutput string) {
+	lines := strings.Split(diffOutput, "\n")
+	for _, line := range lines {
+		if len(line) == 0 {
+			fmt.Println()
+			continue
+		}
+
+		switch {
+		case strings.HasPrefix(line, "---") || strings.HasPrefix(line, "+++"):
+			// File headers in bold
+			fmt.Printf("\033[1m%s\033[0m\n", line)
+		case strings.HasPrefix(line, "@@"):
+			// Hunk headers in cyan
+			fmt.Printf("\033[0;36m%s\033[0m\n", line)
+		case strings.HasPrefix(line, "-"):
+			// Removed lines in red
+			fmt.Printf("\033[0;31m%s\033[0m\n", line)
+		case strings.HasPrefix(line, "+"):
+			// Added lines in green
+			fmt.Printf("\033[0;32m%s\033[0m\n", line)
+		default:
+			// Context lines in default color
+			fmt.Println(line)
+		}
+	}
 }
