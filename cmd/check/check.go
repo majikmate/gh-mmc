@@ -24,6 +24,7 @@ func NewCmdCheck(f *cmdutil.Factory) *cobra.Command {
 	var starterFolder string
 	var ignoreFiles []string
 	var showDiff bool
+	var verbose bool
 
 	cmd := &cobra.Command{
 		Use:   "check",
@@ -84,7 +85,7 @@ func NewCmdCheck(f *cmdutil.Factory) *cobra.Command {
 				// Not in assignment, try classroom folder
 				classroomFolder, err := mmc.FindClassroomFolder()
 				if err != nil {
-					mmc.Fatal("No classroom found. Run `gh mmc init` to initialize a classroom folder or change to a classroom/assignment folder.")
+					mmc.Fatal("No classroom or assignment found. Run `gh mmc init` to initialize a classroom folder or change to a classroom/assignment folder.")
 				}
 				searchPath = classroomFolder
 				err = os.Chdir(classroomFolder)
@@ -105,17 +106,19 @@ func NewCmdCheck(f *cmdutil.Factory) *cobra.Command {
 				}
 			}
 
-			fmt.Printf("Checking classroom: %s\n", c.Classroom.Name)
-			fmt.Printf("Search path: %s\n", searchPath)
-			fmt.Printf("File extensions: %v\n", fileExtensions)
-			fmt.Printf("Threshold: %.0f%%\n", threshold)
-			if len(ignoreFiles) > 0 {
-				fmt.Printf("Ignoring files: %v\n", ignoreFiles)
+			if verbose {
+				fmt.Printf("Checking classroom: %s\n", c.Classroom.Name)
+				fmt.Printf("Search path: %s\n", searchPath)
+				fmt.Printf("File extensions: %v\n", fileExtensions)
+				fmt.Printf("Threshold: %.0f%%\n", threshold)
+				if len(ignoreFiles) > 0 {
+					fmt.Printf("Ignoring files: %v\n", ignoreFiles)
+				}
+				fmt.Println()
 			}
-			fmt.Println()
 
 			// Run the comparison
-			result, err := similarity.CompareAssignments(searchPath, fileExtensions, starterFolder, ignoreFiles)
+			result, err := similarity.CompareAssignments(searchPath, fileExtensions, starterFolder, ignoreFiles, verbose)
 			if err != nil {
 				mmc.Fatal(fmt.Errorf("failed to compare assignments: %v", err))
 			}
@@ -136,7 +139,7 @@ func NewCmdCheck(f *cmdutil.Factory) *cobra.Command {
 			sort.Strings(result.Assignments)
 
 			// Print overall summary and get pairs
-			pairs := printOverallSummary(students, result, threshold)
+			pairs := printOverallSummary(students, result, threshold, fileExtensions, ignoreFiles, c.Classroom.Name)
 
 			// If diff mode is enabled, prompt for case selection
 			if showDiff && len(pairs) > 0 {
@@ -151,84 +154,9 @@ func NewCmdCheck(f *cmdutil.Factory) *cobra.Command {
 	cmd.Flags().StringVarP(&starterFolder, "starter-folder", "s", "", "Name of the starter code folder to exclude (defaults to classroom name)")
 	cmd.Flags().StringSliceVarP(&ignoreFiles, "ignore", "i", []string{}, "File names (without extension) to ignore (e.g., reset,normalize)")
 	cmd.Flags().BoolVarP(&showDiff, "diff", "d", false, "Interactive mode to show diffs for selected cases")
+	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose output")
 
 	return cmd
-}
-
-// printAssignmentResults prints similarity results for a specific assignment
-func printAssignmentResults(assignment string, students []string, result *similarity.ComparisonResult, threshold float64) {
-	type similarityPair struct {
-		student1        string
-		student2        string
-		maxSimilarity   float64
-		fileComparisons []similarity.FileComparison
-	}
-
-	var highSimilarityPairs []similarityPair
-
-	// Find all pairs above threshold for this assignment
-	for i, student1 := range students {
-		for j := i + 1; j < len(students); j++ {
-			student2 := students[j]
-
-			if comp, exists := result.Results[student1][student2][assignment]; exists && comp != nil {
-				if comp.MaxSimilarity >= threshold {
-					// Collect file comparisons above threshold
-					var fileComps []similarity.FileComparison
-					for _, fc := range comp.FileComparisons {
-						if fc.Similarity >= threshold {
-							fileComps = append(fileComps, fc)
-						}
-					}
-
-					if len(fileComps) > 0 {
-						highSimilarityPairs = append(highSimilarityPairs, similarityPair{
-							student1:        student1,
-							student2:        student2,
-							maxSimilarity:   comp.MaxSimilarity,
-							fileComparisons: fileComps,
-						})
-					}
-				}
-			}
-		}
-	}
-
-	if len(highSimilarityPairs) == 0 {
-		return
-	}
-
-	fmt.Printf("\n%s\n", strings.Repeat("=", 80))
-	fmt.Printf("Assignment: %s\n", assignment)
-	fmt.Printf("%s\n\n", strings.Repeat("=", 80))
-
-	// Sort by similarity (highest first)
-	sort.Slice(highSimilarityPairs, func(i, j int) bool {
-		return highSimilarityPairs[i].maxSimilarity > highSimilarityPairs[j].maxSimilarity
-	})
-
-	fmt.Printf("⚠️  High Similarity Warnings (threshold: %.0f%%):\n", threshold)
-	fmt.Println(strings.Repeat("-", 80))
-
-	for i, p := range highSimilarityPairs {
-		colorCode := getColorCode(p.maxSimilarity, threshold)
-		fmt.Printf("%d. %s%-30s%s <-> %s%-30s%s: %s%.1f%%%s\n",
-			i+1,
-			colorCode, truncateString(p.student1, 30),
-			resetColor(),
-			colorCode, truncateString(p.student2, 30),
-			resetColor(),
-			colorCode, p.maxSimilarity,
-			resetColor())
-
-		// Print all file comparisons
-		for _, fc := range p.fileComparisons {
-			fmt.Printf("   Files: %s <-> %s (%.1f%%)\n",
-				filepath.Base(fc.File1),
-				filepath.Base(fc.File2),
-				fc.Similarity)
-		}
-	}
 }
 
 // FileComparisonDetail stores file comparison details for display
@@ -254,7 +182,20 @@ type StudentPair struct {
 }
 
 // printOverallSummary prints a summary across all assignments and returns the pairs
-func printOverallSummary(students []string, result *similarity.ComparisonResult, threshold float64) []StudentPair {
+func printOverallSummary(students []string, result *similarity.ComparisonResult, threshold float64, fileExtensions []string, ignoreFiles []string, classroomName string) []StudentPair {
+
+	// Print header with parameters
+	fmt.Printf("Checking classroom: %s\n", classroomName)
+	fmt.Printf("File extensions: %v\n", fileExtensions)
+	fmt.Printf("Threshold: %.0f%%\n", threshold)
+	if len(ignoreFiles) > 0 {
+		fmt.Printf("Ignoring files: %v\n", ignoreFiles)
+	}
+	fmt.Println("\nAssignments analyzed:")
+	for _, assignment := range result.Assignments {
+		fmt.Printf("  - %s\n", assignment)
+	}
+	fmt.Println()
 
 	pairMap := make(map[string]*StudentPair)
 
@@ -322,34 +263,7 @@ func printOverallSummary(students []string, result *similarity.ComparisonResult,
 		return pairs[i].MaxSimilarity > pairs[j].MaxSimilarity
 	})
 
-	fmt.Printf("Student pairs with high similarity:\n")
-	fmt.Println(strings.Repeat("-", 80))
-
-	for i, p := range pairs {
-		fmt.Printf("\033[0;36m%d. %-30s | %-30s\033[0m\n",
-			i+1,
-			truncateString(p.Student1, 30),
-			truncateString(p.Student2, 30))
-
-		// Print details for each flagged assignment with sub-numbering
-		for j, detail := range p.FlaggedAssignments {
-			detailColor := getColorCode(detail.MaxSimilarity, threshold)
-			fmt.Printf("\n%s%d.%d %s: %.1f%%%s\n",
-				detailColor, i+1, j+1, detail.Name, detail.MaxSimilarity, resetColor())
-
-			// Print all file comparisons above threshold for this assignment
-			for _, fc := range detail.FileComparisons {
-				fcColor := getColorCode(fc.Similarity, threshold)
-				fmt.Printf("%s     %-30s | %-30s (%.1f%%)%s\n",
-					fcColor,
-					filepath.Base(fc.File1),
-					filepath.Base(fc.File2),
-					fc.Similarity,
-					resetColor())
-			}
-		}
-		fmt.Println()
-	}
+	printPairList(pairs, threshold)
 
 	return pairs
 }
@@ -377,17 +291,17 @@ func resetColor() string {
 	return "\033[0m"
 }
 
-// printPairsSummary prints the summary of all student pairs
-func printPairsSummary(pairs []StudentPair, threshold float64) {
-	fmt.Printf("\n%s\n", strings.Repeat("=", 80))
+// promptAndShowDiff prompts user for case selection and shows diffs
+func printPairList(pairs []StudentPair, threshold float64) {
 	fmt.Printf("Student pairs with high similarity:\n")
 	fmt.Println(strings.Repeat("-", 80))
 
 	for i, p := range pairs {
-		fmt.Printf("\033[0;36m%d. %-30s | %-30s\033[0m\n",
+		// Format without pipes: "1  student1Name                student2Name"
+		fmt.Printf("\033[0;36m%-3d%-37s%-37s\033[0m\n",
 			i+1,
-			truncateString(p.Student1, 30),
-			truncateString(p.Student2, 30))
+			truncateString(p.Student1, 37),
+			truncateString(p.Student2, 37))
 
 		// Print details for each flagged assignment with sub-numbering
 		for j, detail := range p.FlaggedAssignments {
@@ -398,7 +312,8 @@ func printPairsSummary(pairs []StudentPair, threshold float64) {
 			// Print all file comparisons above threshold for this assignment
 			for _, fc := range detail.FileComparisons {
 				fcColor := getColorCode(fc.Similarity, threshold)
-				fmt.Printf("%s     %-30s | %-30s (%.1f%%)%s\n",
+				// Align with student names: 3 spaces (for number) + 37 chars + 37 chars
+				fmt.Printf("%s   %-37s%-37s(%.1f%%)%s\n",
 					fcColor,
 					filepath.Base(fc.File1),
 					filepath.Base(fc.File2),
@@ -408,7 +323,6 @@ func printPairsSummary(pairs []StudentPair, threshold float64) {
 		}
 		fmt.Println()
 	}
-	fmt.Printf("%s\n", strings.Repeat("=", 80))
 }
 
 // promptAndShowDiff prompts user for case selection and shows diffs
@@ -435,7 +349,9 @@ func promptAndShowDiff(pairs []StudentPair, threshold float64) {
 
 		// Check for print/list command
 		if input == "p" || input == "P" || input == "print" {
-			printPairsSummary(pairs, threshold)
+			fmt.Printf("\n%s\n", strings.Repeat("=", 80))
+			printPairList(pairs, threshold)
+			fmt.Printf("%s\n", strings.Repeat("=", 80))
 			continue
 		}
 

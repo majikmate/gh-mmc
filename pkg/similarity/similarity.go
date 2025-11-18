@@ -60,7 +60,11 @@ func readFile(filePath string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil && err == nil {
+			err = closeErr
+		}
+	}()
 
 	var lines []string
 	scanner := bufio.NewScanner(file)
@@ -198,7 +202,7 @@ func FindFilesWithExtension(dirPath string, extensions []string, ignoreFiles []s
 }
 
 // CompareAssignments compares files across all students and all assignments
-func CompareAssignments(classroomPath string, fileExtensions []string, starterFolder string, ignoreFiles []string) (*ComparisonResult, error) {
+func CompareAssignments(classroomPath string, fileExtensions []string, starterFolder string, ignoreFiles []string, verbose bool) (*ComparisonResult, error) {
 	studentFolders, err := FindStudentFolders(classroomPath, starterFolder)
 	if err != nil {
 		return nil, err
@@ -229,7 +233,9 @@ func CompareAssignments(classroomPath string, fileExtensions []string, starterFo
 		studentPath := filepath.Join(classroomPath, student)
 		assignments, err := FindAssignments(studentPath)
 		if err != nil {
-			fmt.Printf("Warning: failed to get assignments for %s: %v\n", student, err)
+			if verbose {
+				fmt.Printf("Warning: failed to get assignments for %s: %v\n", student, err)
+			}
 			continue
 		}
 		for _, assignment := range assignments {
@@ -243,12 +249,14 @@ func CompareAssignments(classroomPath string, fileExtensions []string, starterFo
 	}
 	sort.Strings(result.Assignments)
 
-	// Print header and list of assignments
-	fmt.Println("Analyzing assignments:")
-	for _, assignment := range result.Assignments {
-		fmt.Printf("  %s\n", assignment)
+	// Print header and list of assignments only in verbose mode
+	if verbose {
+		fmt.Println("Analyzing assignments:")
+		for _, assignment := range result.Assignments {
+			fmt.Printf("  %s\n", assignment)
+		}
+		fmt.Println()
 	}
-	fmt.Println()
 
 	// For each assignment, compare all students
 	for _, assignment := range result.Assignments {
@@ -264,7 +272,9 @@ func CompareAssignments(classroomPath string, fileExtensions []string, starterFo
 			// Get all files for student1 in this assignment
 			files1, err := FindFilesWithExtension(student1AssignmentPath, fileExtensions, ignoreFiles)
 			if err != nil {
-				fmt.Printf("Warning: failed to find files for %s/%s: %v\n", student1, assignment, err)
+				if verbose {
+					fmt.Printf("Warning: failed to find files for %s/%s: %v\n", student1, assignment, err)
+				}
 				continue
 			}
 
@@ -285,7 +295,9 @@ func CompareAssignments(classroomPath string, fileExtensions []string, starterFo
 				// Get all files for student2 in this assignment
 				files2, err := FindFilesWithExtension(student2AssignmentPath, fileExtensions, ignoreFiles)
 				if err != nil {
-					fmt.Printf("Warning: failed to find files for %s/%s: %v\n", student2, assignment, err)
+					if verbose {
+						fmt.Printf("Warning: failed to find files for %s/%s: %v\n", student2, assignment, err)
+					}
 					continue
 				}
 
@@ -301,7 +313,9 @@ func CompareAssignments(classroomPath string, fileExtensions []string, starterFo
 					for _, file2 := range files2 {
 						sim, err := CalculateSimilarity(file1, file2)
 						if err != nil {
-							fmt.Printf("Warning: failed to compare %s and %s: %v\n", file1, file2, err)
+							if verbose {
+								fmt.Printf("Warning: failed to compare %s and %s: %v\n", file1, file2, err)
+							}
 							continue
 						}
 
