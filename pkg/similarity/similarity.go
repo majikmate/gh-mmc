@@ -5,20 +5,27 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
-// AssignmentComparison stores the max similarity for a specific assignment
+// FileComparison stores similarity for a single file pair
+type FileComparison struct {
+	File1      string
+	File2      string
+	Similarity float64
+}
+
+// AssignmentComparison stores all file comparisons for a specific assignment
 type AssignmentComparison struct {
-	AssignmentName string
-	MaxSimilarity  float64
-	File1          string
-	File2          string
+	AssignmentName  string
+	FileComparisons []FileComparison
+	MaxSimilarity   float64
 }
 
 // ComparisonResult stores similarity results across all assignments
 type ComparisonResult struct {
-	// student1 -> student2 -> assignment -> max similarity
+	// student1 -> student2 -> assignment -> comparisons
 	Results map[string]map[string]map[string]*AssignmentComparison
 	// List of all assignments found
 	Assignments []string
@@ -146,11 +153,11 @@ func FindAssignments(studentPath string) ([]string, error) {
 	return assignments, nil
 }
 
-// FindFilesWithExtension finds all files with a specific extension in a directory
-func FindFilesWithExtension(dirPath string, extension string, ignoreFiles []string) ([]string, error) {
+// FindFilesWithExtension finds all files with specific extensions in a directory
+func FindFilesWithExtension(dirPath string, extensions []string, ignoreFiles []string) ([]string, error) {
 	var files []string
 
-	// Create a map for faster lookup
+	// Create a map for faster lookup of ignored files
 	ignoreMap := make(map[string]bool)
 	for _, ignore := range ignoreFiles {
 		ignoreMap[ignore] = true
@@ -161,11 +168,22 @@ func FindFilesWithExtension(dirPath string, extension string, ignoreFiles []stri
 			return err
 		}
 
-		if !info.IsDir() && strings.HasSuffix(info.Name(), extension) {
-			// Check if file should be ignored (name without extension)
-			nameWithoutExt := strings.TrimSuffix(info.Name(), extension)
-			if !ignoreMap[nameWithoutExt] {
-				files = append(files, path)
+		if !info.IsDir() {
+			// Skip empty files
+			if info.Size() == 0 {
+				return nil
+			}
+
+			// Check if file has any of the specified extensions
+			for _, extension := range extensions {
+				if strings.HasSuffix(info.Name(), extension) {
+					// Check if file should be ignored (name without extension)
+					nameWithoutExt := strings.TrimSuffix(info.Name(), extension)
+					if !ignoreMap[nameWithoutExt] {
+						files = append(files, path)
+					}
+					break // Don't check other extensions if we already matched
+				}
 			}
 		}
 
@@ -180,7 +198,7 @@ func FindFilesWithExtension(dirPath string, extension string, ignoreFiles []stri
 }
 
 // CompareAssignments compares files across all students and all assignments
-func CompareAssignments(classroomPath string, fileExtension string, starterFolder string, ignoreFiles []string) (*ComparisonResult, error) {
+func CompareAssignments(classroomPath string, fileExtensions []string, starterFolder string, ignoreFiles []string) (*ComparisonResult, error) {
 	studentFolders, err := FindStudentFolders(classroomPath, starterFolder)
 	if err != nil {
 		return nil, err
@@ -223,11 +241,17 @@ func CompareAssignments(classroomPath string, fileExtension string, starterFolde
 	for assignment := range assignmentSet {
 		result.Assignments = append(result.Assignments, assignment)
 	}
+	sort.Strings(result.Assignments)
+
+	// Print header and list of assignments
+	fmt.Println("Analyzing assignments:")
+	for _, assignment := range result.Assignments {
+		fmt.Printf("  %s\n", assignment)
+	}
+	fmt.Println()
 
 	// For each assignment, compare all students
 	for _, assignment := range result.Assignments {
-		fmt.Printf("Analyzing assignment: %s\n", assignment)
-
 		// Compare each pair of students for this assignment
 		for i, student1 := range studentFolders {
 			student1AssignmentPath := filepath.Join(classroomPath, student1, "20-assignments", assignment)
@@ -238,7 +262,7 @@ func CompareAssignments(classroomPath string, fileExtension string, starterFolde
 			}
 
 			// Get all files for student1 in this assignment
-			files1, err := FindFilesWithExtension(student1AssignmentPath, fileExtension, ignoreFiles)
+			files1, err := FindFilesWithExtension(student1AssignmentPath, fileExtensions, ignoreFiles)
 			if err != nil {
 				fmt.Printf("Warning: failed to find files for %s/%s: %v\n", student1, assignment, err)
 				continue
@@ -259,7 +283,7 @@ func CompareAssignments(classroomPath string, fileExtension string, starterFolde
 				}
 
 				// Get all files for student2 in this assignment
-				files2, err := FindFilesWithExtension(student2AssignmentPath, fileExtension, ignoreFiles)
+				files2, err := FindFilesWithExtension(student2AssignmentPath, fileExtensions, ignoreFiles)
 				if err != nil {
 					fmt.Printf("Warning: failed to find files for %s/%s: %v\n", student2, assignment, err)
 					continue
@@ -269,9 +293,9 @@ func CompareAssignments(classroomPath string, fileExtension string, starterFolde
 					continue
 				}
 
-				// Find maximum similarity between any pair of files
+				// Compare all file pairs and store all comparisons
+				var comparisons []FileComparison
 				maxSim := 0.0
-				var maxFile1, maxFile2 string
 
 				for _, file1 := range files1 {
 					for _, file2 := range files2 {
@@ -281,27 +305,45 @@ func CompareAssignments(classroomPath string, fileExtension string, starterFolde
 							continue
 						}
 
+						// Store all comparisons
+						comparisons = append(comparisons, FileComparison{
+							File1:      file1,
+							File2:      file2,
+							Similarity: sim,
+						})
+
 						if sim > maxSim {
 							maxSim = sim
-							maxFile1 = file1
-							maxFile2 = file2
 						}
 					}
 				}
 
+				// Sort comparisons by similarity (highest first)
+				sort.Slice(comparisons, func(i, j int) bool {
+					return comparisons[i].Similarity > comparisons[j].Similarity
+				})
+
 				// Store the result for both directions
 				result.Results[student1][student2][assignment] = &AssignmentComparison{
-					AssignmentName: assignment,
-					MaxSimilarity:  maxSim,
-					File1:          maxFile1,
-					File2:          maxFile2,
+					AssignmentName:  assignment,
+					FileComparisons: comparisons,
+					MaxSimilarity:   maxSim,
+				}
+
+				// Create reversed comparisons for student2->student1
+				reversedComparisons := make([]FileComparison, len(comparisons))
+				for i, c := range comparisons {
+					reversedComparisons[i] = FileComparison{
+						File1:      c.File2,
+						File2:      c.File1,
+						Similarity: c.Similarity,
+					}
 				}
 
 				result.Results[student2][student1][assignment] = &AssignmentComparison{
-					AssignmentName: assignment,
-					MaxSimilarity:  maxSim,
-					File1:          maxFile2,
-					File2:          maxFile1,
+					AssignmentName:  assignment,
+					FileComparisons: reversedComparisons,
+					MaxSimilarity:   maxSim,
 				}
 			}
 		}
