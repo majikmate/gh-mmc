@@ -17,6 +17,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const (
+	orderByAssignment = "assignment"
+	orderByStudent    = "student"
+)
+
 func NewCmdCheck(f *cmdutil.Factory) *cobra.Command {
 	var aId int
 	var fileExtensions []string
@@ -25,6 +30,9 @@ func NewCmdCheck(f *cmdutil.Factory) *cobra.Command {
 	var ignoreFiles []string
 	var showDiff bool
 	var verbose bool
+	var orderBy string
+	var filterStudent string
+	var filterAssignment string
 
 	cmd := &cobra.Command{
 		Use:   "check",
@@ -138,12 +146,17 @@ func NewCmdCheck(f *cmdutil.Factory) *cobra.Command {
 			// Sort assignments
 			sort.Strings(result.Assignments)
 
+			// Validate orderBy parameter
+			if orderBy != orderByStudent && orderBy != orderByAssignment {
+				mmc.Fatal(fmt.Errorf("invalid order-by value: %s. Must be '%s' or '%s'", orderBy, orderByStudent, orderByAssignment))
+			}
+
 			// Print overall summary and get pairs
-			pairs := printOverallSummary(students, result, threshold, fileExtensions, ignoreFiles, c.Classroom.Name)
+			pairs := printOverallSummary(students, result, threshold, fileExtensions, ignoreFiles, c.Classroom.Name, orderBy, filterStudent, filterAssignment)
 
 			// If diff mode is enabled, prompt for case selection
 			if showDiff && len(pairs) > 0 {
-				promptAndShowDiff(pairs, threshold)
+				promptAndShowDiff(pairs, threshold, orderBy)
 			}
 		},
 	}
@@ -155,6 +168,9 @@ func NewCmdCheck(f *cmdutil.Factory) *cobra.Command {
 	cmd.Flags().StringSliceVarP(&ignoreFiles, "ignore", "i", []string{}, "File names (without extension) to ignore (e.g., reset,normalize)")
 	cmd.Flags().BoolVarP(&showDiff, "diff", "d", false, "Interactive mode to show diffs for selected cases")
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose output")
+	cmd.Flags().StringVarP(&orderBy, "order-by", "o", orderByAssignment, "Order results by 'assignment' or 'student' (default: assignment)")
+	cmd.Flags().StringVarP(&filterStudent, "student", "u", "", "Filter to show only pairs involving this student")
+	cmd.Flags().StringVarP(&filterAssignment, "assignment", "n", "", "Filter to show only pairs involving this assignment")
 
 	return cmd
 }
@@ -182,7 +198,7 @@ type StudentPair struct {
 }
 
 // printOverallSummary prints a summary across all assignments and returns the pairs
-func printOverallSummary(students []string, result *similarity.ComparisonResult, threshold float64, fileExtensions []string, ignoreFiles []string, classroomName string) []StudentPair {
+func printOverallSummary(students []string, result *similarity.ComparisonResult, threshold float64, fileExtensions []string, ignoreFiles []string, classroomName string, orderBy string, filterStudent string, filterAssignment string) []StudentPair {
 
 	// Print header with parameters
 	fmt.Printf("Checking classroom: %s\n", classroomName)
@@ -190,6 +206,12 @@ func printOverallSummary(students []string, result *similarity.ComparisonResult,
 	fmt.Printf("Threshold: %.0f%%\n", threshold)
 	if len(ignoreFiles) > 0 {
 		fmt.Printf("Ignoring files: %v\n", ignoreFiles)
+	}
+	if filterStudent != "" {
+		fmt.Printf("Filtered by student: %s\n", filterStudent)
+	}
+	if filterAssignment != "" {
+		fmt.Printf("Filtered by assignment: %s\n", filterAssignment)
 	}
 	fmt.Println("\nAssignments analyzed:")
 	for _, assignment := range result.Assignments {
@@ -212,6 +234,10 @@ func printOverallSummary(students []string, result *similarity.ComparisonResult,
 			}
 
 			for _, assignment := range result.Assignments {
+				// Skip assignment if filter is set and doesn't match
+				if filterAssignment != "" && assignment != filterAssignment {
+					continue
+				}
 				if comp, exists := result.Results[student1][student2][assignment]; exists && comp != nil {
 					if comp.MaxSimilarity >= threshold {
 						// Collect all file comparisons above threshold
@@ -241,12 +267,21 @@ func printOverallSummary(students []string, result *similarity.ComparisonResult,
 			}
 
 			if len(pair.FlaggedAssignments) > 0 {
-				pairMap[key] = pair
+				// Apply student filter if specified
+				if filterStudent == "" || pair.Student1 == filterStudent || pair.Student2 == filterStudent {
+					pairMap[key] = pair
+				}
 			}
 		}
 	}
 
 	if len(pairMap) == 0 {
+		if filterStudent != "" {
+			fmt.Printf("No similarities found for student: %s\n", filterStudent)
+		}
+		if filterAssignment != "" {
+			fmt.Printf("No similarities found for assignment: %s\n", filterAssignment)
+		}
 		return []StudentPair{}
 	}
 
@@ -263,7 +298,11 @@ func printOverallSummary(students []string, result *similarity.ComparisonResult,
 		return pairs[i].MaxSimilarity > pairs[j].MaxSimilarity
 	})
 
-	printPairList(pairs, threshold)
+	if orderBy == orderByAssignment {
+		printPairListByAssignment(pairs, threshold, result.Assignments)
+	} else {
+		printPairListByStudent(pairs, threshold)
+	}
 
 	return pairs
 }
@@ -291,8 +330,72 @@ func resetColor() string {
 	return "\033[0m"
 }
 
-// promptAndShowDiff prompts user for case selection and shows diffs
-func printPairList(pairs []StudentPair, threshold float64) {
+// printPairListByAssignment shows results organized by assignment
+func printPairListByAssignment(pairs []StudentPair, threshold float64, assignments []string) {
+	fmt.Printf("Similarity results by assignment:\n")
+	fmt.Println(strings.Repeat("-", 80))
+
+	// Create a map of assignment -> list of (caseNum, assignmentDetailIndex, pair)
+	type AssignmentCase struct {
+		CaseNum             int
+		AssignmentNumInCase int
+		Pair                StudentPair
+		Detail              AssignmentDetail
+	}
+
+	assignmentMap := make(map[string][]AssignmentCase)
+
+	// Collect all cases by assignment
+	for caseNum, pair := range pairs {
+		for assignmentNum, detail := range pair.FlaggedAssignments {
+			assignmentMap[detail.Name] = append(assignmentMap[detail.Name], AssignmentCase{
+				CaseNum:             caseNum + 1,
+				AssignmentNumInCase: assignmentNum + 1,
+				Pair:                pair,
+				Detail:              detail,
+			})
+		}
+	}
+
+	// Print by assignment
+	for _, assignment := range assignments {
+		cases, exists := assignmentMap[assignment]
+		if !exists || len(cases) == 0 {
+			continue
+		}
+
+		// Sort cases by similarity (highest first)
+		sort.Slice(cases, func(i, j int) bool {
+			return cases[i].Detail.MaxSimilarity > cases[j].Detail.MaxSimilarity
+		})
+
+		// Print assignment header
+		fmt.Printf("\n\033[1;35m%s\033[0m\n", assignment)
+
+		for _, ac := range cases {
+			// Print case reference and student pair
+			fmt.Printf("\033[0;36m%-3s%-37s%-37s\033[0m\n",
+				fmt.Sprintf("%d.%d", ac.CaseNum, ac.AssignmentNumInCase),
+				truncateString(ac.Pair.Student1, 37),
+				truncateString(ac.Pair.Student2, 37))
+
+			// Print file comparisons
+			for _, fc := range ac.Detail.FileComparisons {
+				fcColor := getColorCode(fc.Similarity, threshold)
+				fmt.Printf("%s   %-37s%-37s(%.1f%%)%s\n",
+					fcColor,
+					filepath.Base(fc.File1),
+					filepath.Base(fc.File2),
+					fc.Similarity,
+					resetColor())
+			}
+			fmt.Println()
+		}
+	}
+}
+
+// printPairListByStudent shows results organized by student pairs (original format)
+func printPairListByStudent(pairs []StudentPair, threshold float64) {
 	fmt.Printf("Student pairs with high similarity:\n")
 	fmt.Println(strings.Repeat("-", 80))
 
@@ -326,7 +429,7 @@ func printPairList(pairs []StudentPair, threshold float64) {
 }
 
 // promptAndShowDiff prompts user for case selection and shows diffs
-func promptAndShowDiff(pairs []StudentPair, threshold float64) {
+func promptAndShowDiff(pairs []StudentPair, threshold float64, orderBy string) {
 	reader := bufio.NewReader(os.Stdin)
 
 	for {
@@ -350,7 +453,23 @@ func promptAndShowDiff(pairs []StudentPair, threshold float64) {
 		// Check for print/list command
 		if input == "p" || input == "P" || input == "print" {
 			fmt.Printf("\n%s\n", strings.Repeat("=", 80))
-			printPairList(pairs, threshold)
+			if orderBy == orderByAssignment {
+				// We need assignments list - extract from pairs
+				assignmentSet := make(map[string]bool)
+				for _, pair := range pairs {
+					for _, detail := range pair.FlaggedAssignments {
+						assignmentSet[detail.Name] = true
+					}
+				}
+				assignments := make([]string, 0, len(assignmentSet))
+				for assignment := range assignmentSet {
+					assignments = append(assignments, assignment)
+				}
+				sort.Strings(assignments)
+				printPairListByAssignment(pairs, threshold, assignments)
+			} else {
+				printPairListByStudent(pairs, threshold)
+			}
 			fmt.Printf("%s\n", strings.Repeat("=", 80))
 			continue
 		}

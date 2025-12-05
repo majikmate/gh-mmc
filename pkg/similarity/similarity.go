@@ -43,6 +43,10 @@ func CalculateSimilarity(file1, file2 string) (float64, error) {
 		return 0, fmt.Errorf("failed to read %s: %v", file2, err)
 	}
 
+	// Normalize content before comparison
+	content1 = normalizeLines(content1)
+	content2 = normalizeLines(content2)
+
 	// Handle empty files
 	if len(content1) == 0 && len(content2) == 0 {
 		return 100.0, nil
@@ -77,6 +81,58 @@ func readFile(filePath string) ([]string, error) {
 	}
 
 	return lines, nil
+}
+
+// normalizeLine normalizes a line by:
+// - Trimming whitespace
+// - Removing empty lines
+// - Removing common comment patterns
+func normalizeLine(line string) string {
+	// Trim whitespace
+	line = strings.TrimSpace(line)
+
+	// Skip empty lines
+	if line == "" {
+		return ""
+	}
+
+	// Remove single-line comments
+	// HTML/XML comments: <!-- ... -->
+	if strings.HasPrefix(line, "<!--") {
+		return ""
+	}
+
+	// CSS/JS/Java comments: // ...
+	if strings.HasPrefix(line, "//") {
+		return ""
+	}
+
+	// CSS/JS block comments: /* ... */
+	if strings.HasPrefix(line, "/*") || strings.HasPrefix(line, "*") {
+		return ""
+	}
+
+	// Python/Shell comments: # ...
+	if strings.HasPrefix(line, "#") {
+		return ""
+	}
+
+	// Normalize multiple spaces to single space
+	line = strings.Join(strings.Fields(line), " ")
+
+	return line
+}
+
+// normalizeLines applies normalization to all lines and removes empty ones
+func normalizeLines(lines []string) []string {
+	normalized := make([]string, 0, len(lines))
+	for _, line := range lines {
+		norm := normalizeLine(line)
+		if norm != "" {
+			normalized = append(normalized, norm)
+		}
+	}
+	return normalized
 }
 
 // jaccardSimilarity calculates Jaccard similarity coefficient
