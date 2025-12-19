@@ -49,7 +49,7 @@ func NewCmdCheck(f *cmdutil.Factory) *cobra.Command {
 			- Highlight similarities above the threshold
 
 			Files are normalized before comparison by:
-			- Removing empty lines and basic comments
+			- Removing empty lines and all comments (full-line and inline)
 			- Normalizing whitespace
 			- Using line-based Jaccard similarity detection
 			
@@ -528,58 +528,19 @@ func showDiffForAssignment(pair StudentPair, assignment AssignmentDetail, thresh
 		resetColor())
 
 	for _, fc := range assignment.FileComparisons {
-		fmt.Printf("\n%s--- %s\n+++ %s\n(%.1f%% similar)%s\n",
-			getColorCode(fc.Similarity, threshold),
-			fc.File1,
-			fc.File2,
-			fc.Similarity,
-			resetColor())
-
-		// Run diff command
-		cmd := exec.Command("diff", "-u", fc.File1, fc.File2)
-		output, err := cmd.CombinedOutput()
+		// Open files in FileMerge
+		cmd := exec.Command("opendiff", fc.File1, fc.File2)
+		err := cmd.Start()
 
 		if err != nil {
-			// diff returns non-zero when files differ, which is expected
-			if len(output) > 0 {
-				printColoredDiff(string(output))
-			} else {
-				fmt.Printf("Error running diff: %v\n", err)
-			}
+			fmt.Printf("Error opening FileMerge for %s vs %s: %v\n", fc.File1, fc.File2, err)
 		} else {
-			// Files are identical
-			fmt.Println("Files are identical")
+			fmt.Printf("Opening FileMerge: %s vs %s (%.1f%% similar)\n",
+				filepath.Base(fc.File1),
+				filepath.Base(fc.File2),
+				fc.Similarity)
 		}
 	}
 
 	fmt.Printf("\n%s\n", strings.Repeat("=", 80))
-}
-
-// printColoredDiff prints diff output with colors
-func printColoredDiff(diffOutput string) {
-	lines := strings.Split(diffOutput, "\n")
-	for _, line := range lines {
-		if len(line) == 0 {
-			fmt.Println()
-			continue
-		}
-
-		switch {
-		case strings.HasPrefix(line, "---") || strings.HasPrefix(line, "+++"):
-			// File headers in bold
-			fmt.Printf("\033[1m%s\033[0m\n", line)
-		case strings.HasPrefix(line, "@@"):
-			// Hunk headers in cyan
-			fmt.Printf("\033[0;36m%s\033[0m\n", line)
-		case strings.HasPrefix(line, "-"):
-			// Removed lines in red
-			fmt.Printf("\033[0;31m%s\033[0m\n", line)
-		case strings.HasPrefix(line, "+"):
-			// Added lines in green
-			fmt.Printf("\033[0;32m%s\033[0m\n", line)
-		default:
-			// Context lines in default color
-			fmt.Println(line)
-		}
-	}
 }
