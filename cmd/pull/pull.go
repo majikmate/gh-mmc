@@ -1,6 +1,7 @@
 package pull
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -180,11 +181,12 @@ func NewCmdPull(f *cmdutil.Factory) *cobra.Command {
 					}
 				} else {
 					// Starter repo exists, pull changes
-					cmd := exec.Command("git", "pull")
-					cmd.Dir = starterPath
-					output, err := cmd.CombinedOutput()
-					if err != nil {
-						errMsg := fmt.Sprintf("Failed to pull starter repository %s (%s): %v\nOutput: %s", starterFolder, assignment.StarterCodeRepository.HtmlUrl, err, string(output))
+					defaultBranch := assignment.StarterCodeRepository.DefaultBranch
+					if defaultBranch == "" {
+						defaultBranch = "main" // fallback to main if not specified
+					}
+					if err := pullRepository(starterPath, defaultBranch); err != nil {
+						errMsg := fmt.Sprintf("Failed to pull starter repository %s (%s): %v", starterFolder, assignment.StarterCodeRepository.HtmlUrl, err)
 						pullErrors = append(pullErrors, errMsg)
 						fmt.Printf("Failed to pull starter repository: %s\n", starterFolder)
 					} else {
@@ -226,12 +228,12 @@ func NewCmdPull(f *cmdutil.Factory) *cobra.Command {
 					totalCloned++
 				} else {
 					// Repository exists, pull changes
-					// Try git pull using standard git command
-					cmd := exec.Command("git", "pull")
-					cmd.Dir = repoPath
-					output, err := cmd.CombinedOutput()
-					if err != nil {
-						errMsg := fmt.Sprintf("Failed to pull %s (%s): %v\nOutput: %s", repoName, acceptedAssignment.Repository.HtmlUrl, err, string(output))
+					defaultBranch := acceptedAssignment.Repository.DefaultBranch
+					if defaultBranch == "" {
+						defaultBranch = "main" // fallback to main if not specified
+					}
+					if err := pullRepository(repoPath, defaultBranch); err != nil {
+						errMsg := fmt.Sprintf("Failed to pull %s (%s): %v", repoName, acceptedAssignment.Repository.HtmlUrl, err)
 						pullErrors = append(pullErrors, errMsg)
 						if verbose {
 							fmt.Printf(" FAILED\n%s\n", errMsg)
@@ -291,4 +293,26 @@ func NewCmdPull(f *cmdutil.Factory) *cobra.Command {
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose error output")
 
 	return cmd
+}
+
+// pullRepository safely pulls a repository using autostash to preserve local changes
+// This ensures we get the latest content while preserving any uncommitted student work
+func pullRepository(repoPath, defaultBranch string) error {
+	// Verify it's a git repository
+	gitDir := filepath.Join(repoPath, ".git")
+	if _, err := os.Stat(gitDir); os.IsNotExist(err) {
+		return fmt.Errorf("not a git repository")
+	}
+
+	// Pull with autostash - this handles fetch, merge, and stashing automatically
+	pullCmd := exec.Command("git", "pull", "--autostash", "origin", defaultBranch)
+	pullCmd.Dir = repoPath
+	var pullOut bytes.Buffer
+	pullCmd.Stdout = &pullOut
+	pullCmd.Stderr = &pullOut
+	if err := pullCmd.Run(); err != nil {
+		return fmt.Errorf("git pull failed: %v\nOutput: %s", err, pullOut.String())
+	}
+
+	return nil
 }

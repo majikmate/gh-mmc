@@ -86,7 +86,7 @@ func readFile(filePath string) ([]string, error) {
 // normalizeLine normalizes a line by:
 // - Trimming whitespace
 // - Removing empty lines
-// - Removing common comment patterns
+// - Removing all comment patterns (both full-line and inline)
 func normalizeLine(line string) string {
 	// Trim whitespace
 	line = strings.TrimSpace(line)
@@ -96,7 +96,7 @@ func normalizeLine(line string) string {
 		return ""
 	}
 
-	// Remove single-line comments
+	// Remove full-line comments first
 	// HTML/XML comments: <!-- ... -->
 	if strings.HasPrefix(line, "<!--") {
 		return ""
@@ -115,6 +115,46 @@ func normalizeLine(line string) string {
 	// Python/Shell comments: # ...
 	if strings.HasPrefix(line, "#") {
 		return ""
+	}
+
+	// Remove inline comments
+	// CSS/JS single-line comments: // ...
+	if idx := strings.Index(line, "//"); idx != -1 {
+		line = line[:idx]
+		line = strings.TrimSpace(line)
+		if line == "" {
+			return ""
+		}
+	}
+
+	// CSS/JS block comment start: /* ...
+	if idx := strings.Index(line, "/*"); idx != -1 {
+		// Find the end of the comment
+		endIdx := strings.Index(line[idx:], "*/")
+		if endIdx != -1 {
+			// Comment ends on the same line
+			line = line[:idx] + line[idx+endIdx+2:]
+			line = strings.TrimSpace(line)
+			if line == "" {
+				return ""
+			}
+		} else {
+			// Comment continues to next line, remove from /* onwards
+			line = line[:idx]
+			line = strings.TrimSpace(line)
+			if line == "" {
+				return ""
+			}
+		}
+	}
+
+	// Python/Shell inline comments: # ...
+	if idx := strings.Index(line, "#"); idx != -1 {
+		line = line[:idx]
+		line = strings.TrimSpace(line)
+		if line == "" {
+			return ""
+		}
 	}
 
 	// Normalize multiple spaces to single space
