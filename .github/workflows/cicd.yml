@@ -14,7 +14,6 @@
 # https://github.com/marketplace?type=actions
 
 name: Continuous Integration and Deployment
-description: Runs golangci-lint, builds and tests for all supported platforms, and creates a release when a tag is pushed.
 
 on: 
   push:
@@ -22,7 +21,19 @@ on:
       - v*
     branches:
       - main
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'module-html-css/**'
   pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'module-html-css/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
 
@@ -30,6 +41,7 @@ jobs:
   lint:
     name: lint
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     
     permissions:
       contents: read
@@ -38,10 +50,14 @@ jobs:
       - name: checkout code
         uses: actions/checkout@v5
 
+      - name: setup go
+        uses: ./.github/actions/setup-go
+
       - name: run the code linter
         uses: golangci/golangci-lint-action@v8
         with:
           version: latest
+          args: --timeout=5m
 
   # test the code
   test:
@@ -52,6 +68,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
 
     permissions:
       contents: read
@@ -64,7 +81,7 @@ jobs:
         uses: ./.github/actions/setup-go
 
       - name: run tests
-        run: go test -race ./...
+        run: go test -race -v ./...
 
   # build the code
   build:
@@ -74,7 +91,8 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}    
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
     if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
     
     permissions:
@@ -88,13 +106,14 @@ jobs:
         uses: ./.github/actions/setup-go
 
       - name: build
-        run: go build -v .
+        run: go build -v -trimpath .
 
   # create a release when a tag is pushed
   release:
     name: release
     needs: test
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     if: ${{ startsWith(github.ref, 'refs/tags/v') }} 
 
     permissions:
@@ -105,6 +124,8 @@ jobs:
     steps:
       - name: checkout code
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: build and release binaries
         uses: cli/gh-extension-precompile@v2.1.0

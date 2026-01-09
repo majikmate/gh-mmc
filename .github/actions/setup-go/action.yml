@@ -7,6 +7,8 @@ runs:
       uses: actions/setup-go@v6
       with:
         go-version-file: go.mod
+        cache: true
+        cache-dependency-path: go.sum
 
     - name: download dependencies
       shell: bash
