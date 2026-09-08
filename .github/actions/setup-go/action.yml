@@ -1,0 +1,15 @@
+name: "setup go"
+description: "setup the go environment using go.mod"
+runs:
+  using: "composite"
+  steps:
+    - name: setup go
+      uses: actions/setup-go@v6
+      with:
+        go-version-file: go.mod
+        cache: true
+        cache-dependency-path: go.sum
+
+    - name: download dependencies
+      shell: bash
+      run: go mod download
