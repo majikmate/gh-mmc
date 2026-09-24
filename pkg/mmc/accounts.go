@@ -37,22 +37,21 @@ var (
 	ErrAccountsNotFound = errors.New("no classroom found: run `gh mmc init` in a classroom folder or in a folder containing an accounts file [Aa]ccounts*.xlsx")
 )
 
-// FindAccountsFolder searches upwards from the current directory to find a folder containing an accounts file
+// FindInitFolder searches upwards from the current directory to find the nearest folder that is either an existing
+// classroom folder, i.e. contains the .mmc folder with the classroom.json file, or contains an accounts file
 // Returns the absolute path to the folder, or an error if not found
-func FindAccountsFolder() (string, error) {
+func FindInitFolder() (string, error) {
 	currentDir, err := os.Getwd()
 	if err != nil {
 		return "", fmt.Errorf("failed to get current directory: %v", err)
 	}
 
 	for {
-		entries, err := os.ReadDir(currentDir)
-		if err == nil {
-			for _, e := range entries {
-				if matched, _ := filepath.Match(accountsFilePattern, e.Name()); matched && !e.IsDir() {
-					return currentDir, nil
-				}
-			}
+		if _, err := os.Stat(filepath.Join(currentDir, mmcFolder, classroomFile)); err == nil {
+			return currentDir, nil
+		}
+		if hasAccountsFile(currentDir) {
+			return currentDir, nil
 		}
 
 		parentDir := filepath.Dir(currentDir)
@@ -64,16 +63,35 @@ func FindAccountsFolder() (string, error) {
 	}
 }
 
+// hasAccountsFile checks if the folder contains an accounts file
+func hasAccountsFile(folder string) bool {
+	entries, err := os.ReadDir(folder)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if matched, _ := filepath.Match(accountsFilePattern, e.Name()); matched && !e.IsDir() {
+			return true
+		}
+	}
+	return false
+}
+
 // check if an account file is available in the current folder and return the name of it
 func getAccountFile() (string, error) {
 	files, err := filepath.Glob(accountsFilePattern)
 	if err != nil {
 		return "", err
 	}
-	if len(files) != 1 {
-		return "", fmt.Errorf("no accounts file found")
+	folder, _ := os.Getwd()
+	switch len(files) {
+	case 0:
+		return "", fmt.Errorf("no accounts file [Aa]ccounts*.xlsx found in %s", folder)
+	case 1:
+		return files[0], nil
+	default:
+		return "", fmt.Errorf("more than one accounts file found in %s: %s", folder, strings.Join(files, ", "))
 	}
-	return files[0], nil
 }
 
 // ReadAccounts reads the accounts from the accounts file

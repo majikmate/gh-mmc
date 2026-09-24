@@ -1,7 +1,6 @@
 package initialize
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -27,8 +26,9 @@ func NewCmdInit(f *cmdutil.Factory) *cobra.Command {
 			GitHub organization of the classroom or is invited to it.
 
 			The command can be run in the classroom folder or in any folder below it, and
-			always operates in the classroom folder. The classroom folder is the folder of an
-			existing classroom, i.e. the folder containing the .mmc folder with the
+			always operates in the classroom folder. The classroom folder is the nearest
+			folder, searching upwards from the current folder, that is either the folder of
+			an existing classroom, i.e. the folder containing the .mmc folder with the
 			classroom.json file, or, for a new classroom, the folder containing the accounts
 			file. If neither is found, the command aborts with an error.
 
@@ -47,23 +47,18 @@ func NewCmdInit(f *cmdutil.Factory) *cobra.Command {
 			Students that are not members of the organization are invited to it, unless an
 			invitation is pending already. Inviting requires the user to be an owner of the
 			organization and the gh token to have the admin:org scope. If it does not have
-			it, the scope is added for inviting and removed again afterwards, both requiring
-			to authenticate in the browser.
+			it, the scope is added for inviting, which requires to authenticate in the
+			browser, and removed again afterwards without any interaction, even if the
+			command fails or is interrupted.
 
 			A table summarizes the membership status of the students on the roster.`),
 		Example: `$ gh mmc init`,
 		Run: func(cmd *cobra.Command, args []string) {
-			// The classroom root is the folder of an existing classroom or, for a new classroom, the folder
-			// containing the accounts file
-			classroomFolder, err := mmc.FindClassroomFolder()
+			// The classroom root is the nearest folder of an existing classroom or, for a new classroom, the
+			// nearest folder containing the accounts file
+			classroomFolder, err := mmc.FindInitFolder()
 			if err != nil {
-				if !errors.Is(err, mmc.ErrClassroomNotFound) {
-					mmc.Fatal(err)
-				}
-				classroomFolder, err = mmc.FindAccountsFolder()
-				if err != nil {
-					mmc.Fatal(err)
-				}
+				mmc.Fatal(err)
 			}
 
 			// Execute in the classroom root and return to the current folder afterwards

@@ -354,10 +354,7 @@ func GetCodespacesForOrg(client *api.RESTClient, orgName string) ([]GitHubCodesp
 			if strings.Contains(err.Error(), "404") || strings.Contains(err.Error(), "Not Found") {
 				return nil, fmt.Errorf("failed to fetch codespaces for org %s: organization exists but codespaces endpoint not available. This could mean:\n"+
 					"1. GitHub Codespaces is not enabled for this organization\n"+
-					"2. Your GitHub token doesn't have 'admin:org' scope\n"+
-					"3. You don't have permission to manage codespaces in this organization\n\n"+
-					"To fix permission issues, try refreshing your GitHub CLI authentication:\n"+
-					"   gh auth refresh --scopes admin:org\n\n"+
+					"2. Your GitHub token doesn't have the 'admin:org' scope or permission to manage codespaces\n\n"+
 					"Original error: %v", orgName, err)
 			}
 			return nil, fmt.Errorf("failed to fetch codespaces for org %s: %v", orgName, err)

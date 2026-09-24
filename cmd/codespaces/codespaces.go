@@ -30,7 +30,13 @@ func NewCmdCodespaces(f *cmdutil.Factory) *cobra.Command {
 
 			The organization is looked up from the classroom metadata if it exists, 
 			otherwise you will be prompted to select an organization from your available 
-			organizations.`),
+			organizations.
+
+			Managing the codespaces of an organization requires the user to be an owner of
+			the organization and the gh token to have the admin:org scope. If it does not
+			have it, the scope is added, which requires to authenticate in the browser, and
+			removed again afterwards without any interaction, even if the command fails or
+			is interrupted.`),
 	}
 
 	cmd.AddCommand(NewCmdCodespacesList(f))
@@ -60,8 +66,14 @@ func NewCmdCodespacesList(f *cmdutil.Factory) *cobra.Command {
 			otherwise you will be prompted to select an organization from your available 
 			organizations.
 
-			For each codespace, the command shows detailed information including machine 
-			specifications, prebuild status, and last usage time.`),
+			For each codespace, the command shows detailed information including machine
+			specifications, prebuild status, and last usage time.
+
+			Listing the codespaces of an organization requires the user to be an owner of the
+			organization and the gh token to have the admin:org scope. If it does not have
+			it, the scope is added for listing, which requires to authenticate in the
+			browser, and removed again afterwards without any interaction, even if the
+			command fails or is interrupted.`),
 		Example: `$ gh mmc codespaces list
 $ gh mmc codespaces list --org my-org`,
 		Run: func(cmd *cobra.Command, args []string) {
@@ -70,8 +82,15 @@ $ gh mmc codespaces list --org my-org`,
 				mmc.Fatal(fmt.Errorf("failed to create gh client: %v", err))
 			}
 
+			// The codespaces are printed after the admin:org scope is removed again
 			var codespaces []ghapi.GitHubCodespace
-			orgName, codespaces = loadCodespaces(client, orgName)
+			err = withCodespaces(client, orgName, func(_ *api.RESTClient, org string, cs []ghapi.GitHubCodespace) error {
+				orgName, codespaces = org, cs
+				return nil
+			})
+			if err != nil {
+				mmc.Fatal(err)
+			}
 
 			if len(codespaces) == 0 {
 				fmt.Printf("No codespaces found for organization %s\n", orgName)
@@ -246,7 +265,13 @@ func NewCmdCodespacesRm(f *cmdutil.Factory) *cobra.Command {
 
 			The organization is looked up from the classroom metadata if it exists, 
 			otherwise you will be prompted to select an organization from your available 
-			organizations.`),
+			organizations.
+
+			Managing the codespaces of an organization requires the user to be an owner of
+			the organization and the gh token to have the admin:org scope. If it does not
+			have it, the scope is added, which requires to authenticate in the browser, and
+			removed again afterwards without any interaction, even if the command fails or
+			is interrupted.`),
 		Example: `$ gh mmc codespaces rm
 $ gh mmc codespaces rm --org my-org
 $ gh mmc codespaces rm --all
@@ -257,122 +282,12 @@ $ gh mmc codespaces rm --org my-org --all`,
 				mmc.Fatal(fmt.Errorf("failed to create gh client: %v", err))
 			}
 
-			var codespaces []ghapi.GitHubCodespace
-			orgName, codespaces = loadCodespaces(client, orgName)
-
-			if len(codespaces) == 0 {
-				fmt.Printf("No codespaces found for organization %s\n", orgName)
-				return
-			}
-
-			// Sort codespaces by student name for consistent ordering
-			classroom, classroomErr := mmc.LoadClassroom()
-
-			// Create a slice to hold codespace data with student names for sorting
-			type codespaceWithStudent struct {
-				codespace   ghapi.GitHubCodespace
-				studentName string
-			}
-
-			var codespacesList []codespaceWithStudent
-
-			// Populate the list with student names
-			for _, cs := range codespaces {
-				var studentName string
-				if classroomErr == nil {
-					if name, err := classroom.GetRepoName(cs.Owner.Login); err == nil {
-						studentName = name
-					}
-				}
-				codespacesList = append(codespacesList, codespaceWithStudent{
-					codespace:   cs,
-					studentName: studentName,
-				})
-			}
-
-			// Sort by student name (empty names go to the end)
-			sort.Slice(codespacesList, func(i, j int) bool {
-				// If one student name is empty and the other isn't, put empty ones at the end
-				if codespacesList[i].studentName == "" && codespacesList[j].studentName != "" {
-					return false
-				}
-				if codespacesList[i].studentName != "" && codespacesList[j].studentName == "" {
-					return true
-				}
-				// If both student names are empty, sort by owner (GitHub username)
-				if codespacesList[i].studentName == "" && codespacesList[j].studentName == "" {
-					return codespacesList[i].codespace.Owner.Login < codespacesList[j].codespace.Owner.Login
-				}
-				// Both are non-empty, sort alphabetically by student name
-				return codespacesList[i].studentName < codespacesList[j].studentName
+			// The codespaces are deleted within the same admin:org scope they are listed with
+			err = withCodespaces(client, orgName, func(client *api.RESTClient, orgName string, codespaces []ghapi.GitHubCodespace) error {
+				return removeCodespaces(client, orgName, codespaces, all, verbose)
 			})
-
-			// Extract sorted codespaces back to the original slice
-			codespaces = make([]ghapi.GitHubCodespace, len(codespacesList))
-			for i, item := range codespacesList {
-				codespaces[i] = item.codespace
-			}
-
-			var selectedCodespaces []ghapi.GitHubCodespace
-
-			if all {
-				// Filter non-running codespaces without uncommitted/unpushed changes when using --all flag
-				var filteredCount int
-				for _, cs := range codespaces {
-					if cs.State != "Available" && !cs.GitStatus.HasUncommittedChanges && !cs.GitStatus.HasUnpushedChanges {
-						selectedCodespaces = append(selectedCodespaces, cs)
-					} else if cs.State != "Available" {
-						filteredCount++ // Count filtered out non-running codespaces
-					}
-				}
-
-				if len(selectedCodespaces) == 0 {
-					if filteredCount > 0 {
-						fmt.Printf("No clean non-running codespaces found to delete.\n")
-						fmt.Printf("Found %d non-running codespace(s) with uncommitted or unpushed changes (skipped for safety).\n", filteredCount)
-					} else {
-						fmt.Println("No non-running codespaces found to delete.")
-					}
-					return
-				}
-
-				fmt.Printf("Found %d clean non-running codespace(s) to delete with --all flag:\n", len(selectedCodespaces))
-				if filteredCount > 0 {
-					fmt.Printf("(Skipped %d non-running codespace(s) with uncommitted or unpushed changes)\n", filteredCount)
-				}
-				fmt.Println()
-
-				// Display in table format similar to interactive selection
-				displayCodespacesTable(selectedCodespaces, orgName)
-			} else {
-				// Prompt user to select codespaces to delete
-				var err error
-
-				// Create getUserDisplayName callback function
-				getUserDisplayName := func(githubUsername string) string {
-					if classroomErr == nil {
-						if studentName, err := classroom.GetRepoName(githubUsername); err == nil && studentName != "" {
-							return studentName
-						}
-					}
-					return githubUsername
-				}
-
-				selectedCodespaces, err = ghapi.PromptForCodespaceSelection(codespaces, orgName, getUserDisplayName)
-				if err != nil {
-					mmc.Fatal(fmt.Errorf("failed to select codespaces: %v", err))
-				}
-
-				if len(selectedCodespaces) == 0 {
-					fmt.Println("No codespaces selected for deletion.")
-					return
-				}
-			}
-
-			// Delete selected codespaces
-			err = deleteSelectedCodespaces(client, orgName, selectedCodespaces, verbose)
 			if err != nil {
-				mmc.Fatal(fmt.Errorf("failed to delete selected codespaces: %v", err))
+				mmc.Fatal(err)
 			}
 		},
 	}
@@ -384,19 +299,143 @@ $ gh mmc codespaces rm --org my-org --all`,
 	return cmd
 }
 
-// loadCodespaces returns the organization and its codespaces. The organization is the one given, the one of the
+// removeCodespaces lets the user select codespaces of the organization, or selects all clean non-running ones, and
+// deletes them after confirmation
+func removeCodespaces(client *api.RESTClient, orgName string, codespaces []ghapi.GitHubCodespace, all, verbose bool) error {
+	if len(codespaces) == 0 {
+		fmt.Printf("No codespaces found for organization %s\n", orgName)
+		return nil
+	}
+
+	// Sort codespaces by student name for consistent ordering
+	classroom, classroomErr := mmc.LoadClassroom()
+
+	// Create a slice to hold codespace data with student names for sorting
+	type codespaceWithStudent struct {
+		codespace   ghapi.GitHubCodespace
+		studentName string
+	}
+
+	var codespacesList []codespaceWithStudent
+
+	// Populate the list with student names
+	for _, cs := range codespaces {
+		var studentName string
+		if classroomErr == nil {
+			if name, err := classroom.GetRepoName(cs.Owner.Login); err == nil {
+				studentName = name
+			}
+		}
+		codespacesList = append(codespacesList, codespaceWithStudent{
+			codespace:   cs,
+			studentName: studentName,
+		})
+	}
+
+	// Sort by student name (empty names go to the end)
+	sort.Slice(codespacesList, func(i, j int) bool {
+		// If one student name is empty and the other isn't, put empty ones at the end
+		if codespacesList[i].studentName == "" && codespacesList[j].studentName != "" {
+			return false
+		}
+		if codespacesList[i].studentName != "" && codespacesList[j].studentName == "" {
+			return true
+		}
+		// If both student names are empty, sort by owner (GitHub username)
+		if codespacesList[i].studentName == "" && codespacesList[j].studentName == "" {
+			return codespacesList[i].codespace.Owner.Login < codespacesList[j].codespace.Owner.Login
+		}
+		// Both are non-empty, sort alphabetically by student name
+		return codespacesList[i].studentName < codespacesList[j].studentName
+	})
+
+	// Extract sorted codespaces back to the original slice
+	codespaces = make([]ghapi.GitHubCodespace, len(codespacesList))
+	for i, item := range codespacesList {
+		codespaces[i] = item.codespace
+	}
+
+	var selectedCodespaces []ghapi.GitHubCodespace
+
+	if all {
+		// Filter non-running codespaces without uncommitted/unpushed changes when using --all flag
+		var filteredCount int
+		for _, cs := range codespaces {
+			if cs.State != "Available" && !cs.GitStatus.HasUncommittedChanges && !cs.GitStatus.HasUnpushedChanges {
+				selectedCodespaces = append(selectedCodespaces, cs)
+			} else if cs.State != "Available" {
+				filteredCount++ // Count filtered out non-running codespaces
+			}
+		}
+
+		if len(selectedCodespaces) == 0 {
+			if filteredCount > 0 {
+				fmt.Printf("No clean non-running codespaces found to delete.\n")
+				fmt.Printf("Found %d non-running codespace(s) with uncommitted or unpushed changes (skipped for safety).\n", filteredCount)
+			} else {
+				fmt.Println("No non-running codespaces found to delete.")
+			}
+			return nil
+		}
+
+		fmt.Printf("Found %d clean non-running codespace(s) to delete with --all flag:\n", len(selectedCodespaces))
+		if filteredCount > 0 {
+			fmt.Printf("(Skipped %d non-running codespace(s) with uncommitted or unpushed changes)\n", filteredCount)
+		}
+		fmt.Println()
+
+		// Display in table format similar to interactive selection
+		displayCodespacesTable(selectedCodespaces, orgName)
+	} else {
+		// Prompt user to select codespaces to delete
+		var err error
+
+		// Create getUserDisplayName callback function
+		getUserDisplayName := func(githubUsername string) string {
+			if classroomErr == nil {
+				if studentName, err := classroom.GetRepoName(githubUsername); err == nil && studentName != "" {
+					return studentName
+				}
+			}
+			return githubUsername
+		}
+
+		selectedCodespaces, err = ghapi.PromptForCodespaceSelection(codespaces, orgName, getUserDisplayName)
+		if err != nil {
+			return fmt.Errorf("failed to select codespaces: %v", err)
+		}
+
+		if len(selectedCodespaces) == 0 {
+			fmt.Println("No codespaces selected for deletion.")
+			return nil
+		}
+	}
+
+	// Delete selected codespaces
+	err := deleteSelectedCodespaces(client, orgName, selectedCodespaces, verbose)
+	if err != nil {
+		return fmt.Errorf("failed to delete selected codespaces: %v", err)
+	}
+
+	return nil
+}
+
+// withCodespaces runs fn with the organization and its codespaces. The organization is the one given, the one of the
 // classroom or selected by the user. Within a course, only the codespaces of the starter repository and the student
-// repositories of the course are returned, within a classroom outside of a course the ones of all its courses.
-func loadCodespaces(client *api.RESTClient, orgName string) (string, []ghapi.GitHubCodespace) {
+// repositories of the course are passed, within a classroom outside of a course the ones of all its courses.
+// Listing and deleting the codespaces of an organization requires the user to be an owner of the organization and the
+// gh token to have the admin:org scope. If it does not have it, the scope is added before running fn and removed again
+// afterwards, see ghapi.WithScope.
+func withCodespaces(client *api.RESTClient, orgName string, fn func(client *api.RESTClient, orgName string, codespaces []ghapi.GitHubCodespace) error) error {
 	if orgName == "" {
 		c, err := mmc.LoadClassroom()
 		if err != nil {
 			if !errors.Is(err, mmc.ErrClassroomNotFound) {
-				mmc.Fatal(err)
+				return err
 			}
 			org, err := ghapi.PromptForOrganization(client)
 			if err != nil {
-				mmc.Fatal(fmt.Errorf("failed to select organization: %v", err))
+				return fmt.Errorf("failed to select organization: %v", err)
 			}
 			orgName = org.Login
 		} else {
@@ -404,27 +443,41 @@ func loadCodespaces(client *api.RESTClient, orgName string) (string, []ghapi.Git
 		}
 	}
 
-	fmt.Printf("Fetching codespaces for organization: %s", orgName)
-
-	codespaces, err := ghapi.GetCodespacesForOrg(client, orgName)
+	// Check the role first, so that the admin:org scope is only requested if the codespaces can be managed
+	role, err := ghapi.GetOrganizationRole(client, orgName)
 	if err != nil {
-		mmc.Fatal(fmt.Errorf("failed to get codespaces: %v", err))
+		return fmt.Errorf("failed to get the role in organization %s: %v", orgName, err)
+	}
+	if role != "admin" {
+		return fmt.Errorf("only owners of organization %s can manage its codespaces", orgName)
 	}
 
 	repositories, scope := scopeRepositories(orgName)
-	if repositories != nil {
-		fmt.Printf(" (filtered by %s)", scope)
-		filtered := []ghapi.GitHubCodespace{}
-		for _, cs := range codespaces {
-			if repositories[strings.ToLower(cs.Repository.FullName)] {
-				filtered = append(filtered, cs)
-			}
-		}
-		codespaces = filtered
-	}
-	fmt.Print("\n\n")
 
-	return orgName, codespaces
+	_, err = ghapi.WithScope(client, "admin:org", func(client *api.RESTClient) error {
+		fmt.Printf("Fetching codespaces for organization: %s", orgName)
+
+		codespaces, err := ghapi.GetCodespacesForOrg(client, orgName)
+		if err != nil {
+			return fmt.Errorf("failed to get codespaces: %v", err)
+		}
+
+		if repositories != nil {
+			fmt.Printf(" (filtered by %s)", scope)
+			filtered := []ghapi.GitHubCodespace{}
+			for _, cs := range codespaces {
+				if repositories[strings.ToLower(cs.Repository.FullName)] {
+					filtered = append(filtered, cs)
+				}
+			}
+			codespaces = filtered
+		}
+		fmt.Print("\n\n")
+
+		return fn(client, orgName, codespaces)
+	})
+
+	return err
 }
 
 // scopeRepositories returns the lowercase full names of the repositories whose codespaces are shown, and a

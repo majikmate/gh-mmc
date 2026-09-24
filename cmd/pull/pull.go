@@ -158,8 +158,9 @@ func NewCmdPull(f *cmdutil.Factory) *cobra.Command {
 			Their student repositories cannot be created before they accepted the invitation:
 			run the command again afterwards.
 			Inviting requires the user to be an owner of the organization and the gh token to
-			have the admin:org scope. If it does not have it, the scope is added for inviting
-			and removed again afterwards, both requiring to authenticate in the browser.
+			have the admin:org scope. If it does not have it, the scope is added for inviting,
+			which requires to authenticate in the browser, and removed again afterwards
+			without any interaction, even if the command fails or is interrupted.
 
 			There is only one student repository per student in a course, named after the
 			GitHub user of the student. A student repository on GitHub is invalid if its

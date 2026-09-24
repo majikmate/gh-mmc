@@ -105,10 +105,11 @@ func NewCmdDelete(f *cmdutil.Factory) *cobra.Command {
 			course again.
 
 			The command lists all repositories it deletes, including local clones with changes
-			that are not pushed, and asks to type the name of the classroom to confirm. Deleting
+			that are not pushed, and asks to type <classroom>/<course> to confirm. Deleting
 			repositories on GitHub requires the gh token to have the delete_repo scope. If it
-			does not have it, the scope is added for deleting and removed again afterwards, both
-			requiring to authenticate in the browser. A local clone is only deleted after its
+			does not have it, the scope is added for deleting, which requires to authenticate
+			in the browser, and removed again afterwards without any interaction, even if the
+			command fails or is interrupted. A local clone is only deleted after its
 			repository on GitHub was deleted.`),
 		Example: `$ gh mmc delete`,
 		Run: func(cmd *cobra.Command, args []string) {
@@ -120,9 +121,12 @@ func NewCmdDelete(f *cmdutil.Factory) *cobra.Command {
 }
 
 // openCourse changes to the course root of the current folder and returns the course and a function that changes
-// back to the current folder
-func openCourse() (course, func()) {
+// back to the current folder. The command is the one to run in a course folder if there is none.
+func openCourse(command string) (course, func()) {
 	courseFolder, err := mmc.FindCourseFolder()
+	if errors.Is(err, mmc.ErrCourseNotFound) {
+		mmc.Fatal(fmt.Errorf("no course found: run `gh mmc %s` in a course folder or in any folder below it", command))
+	}
 	if err != nil {
 		mmc.Fatal(err)
 	}
@@ -171,7 +175,7 @@ func (co course) localClone(t *target, r repository) {
 
 // clean removes the local clones of the repositories of the course of the current folder
 func clean() {
-	co, restore := openCourse()
+	co, restore := openCourse("clean")
 	defer restore()
 
 	removed, kept, failed := 0, 0, 0
@@ -212,7 +216,7 @@ func clean() {
 
 // deleteCourse deletes the repositories of the course of the current folder on GitHub and locally after confirmation
 func deleteCourse() {
-	co, restore := openCourse()
+	co, restore := openCourse("delete")
 	defer restore()
 
 	client, err := api.DefaultRESTClient()
@@ -220,9 +224,9 @@ func deleteCourse() {
 		mmc.Fatal(fmt.Errorf("failed to create gh client: %v", err))
 	}
 
-	// This is a destructive operation, so the name of the classroom must be typed to confirm it
-	confirm := func(classroom string) (string, error) {
-		return ghapi.PromptForName(fmt.Sprintf("Deleted repositories cannot be restored. Type the name of the classroom %s to delete them:", classroom), "", func(string) error {
+	// This is a destructive operation, so <classroom>/<course> must be typed to confirm it
+	confirm := func(name string) (string, error) {
+		return ghapi.PromptForName(fmt.Sprintf("Deleted repositories cannot be restored. Type %s to delete them:", name), "", func(string) error {
 			return nil
 		})
 	}
@@ -236,9 +240,9 @@ func deleteCourse() {
 	}
 }
 
-// deleteRepositories deletes the repositories of the course on GitHub and locally, if confirm returns the name of the
-// classroom. It returns whether deleting any repository failed, and an error if nothing was deleted.
-func deleteRepositories(client *api.RESTClient, co course, confirm func(classroom string) (string, error)) (bool, error) {
+// deleteRepositories deletes the repositories of the course on GitHub and locally, if confirm returns
+// <classroom>/<course>. It returns whether deleting any repository failed, and an error if nothing was deleted.
+func deleteRepositories(client *api.RESTClient, co course, confirm func(name string) (string, error)) (bool, error) {
 	repositories, err := ghapi.ListAllOrganizationRepositories(client, co.org)
 	if err != nil {
 		return false, fmt.Errorf("failed to list repositories of organization %s: %v", co.org, err)
@@ -311,12 +315,13 @@ func deleteRepositories(client *api.RESTClient, co course, confirm func(classroo
 	}
 	fmt.Println()
 
-	name, err := confirm(co.classroom)
+	want := co.classroom + "/" + co.name
+	name, err := confirm(want)
 	if err != nil {
 		return false, fmt.Errorf("nothing was deleted: %v", err)
 	}
-	if name != co.classroom {
-		return false, fmt.Errorf("nothing was deleted: %q is not the name of the classroom %s", name, co.classroom)
+	if name != want {
+		return false, fmt.Errorf("nothing was deleted: %q is not %s", name, want)
 	}
 
 	// Repositories are deleted on GitHub first

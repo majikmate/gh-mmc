@@ -3,6 +3,8 @@ package mmc
 import (
 	"fmt"
 	"os"
+
+	"github.com/majikmate/gh-mmc/pkg/ghapi"
 )
 
 const (
@@ -14,6 +16,8 @@ const (
 
 func Fatal(v ...any) {
 	fmt.Fprintln(os.Stderr, v...)
+	// Exiting skips the downgrade of gh after ghapi.WithScope
+	ghapi.RestoreToken()
 	os.Exit(1)
 }
 

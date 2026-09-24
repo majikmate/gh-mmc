@@ -69,7 +69,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
 
@@ -93,7 +93,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
@@ -111,7 +111,7 @@ jobs:
       - name: build
         run: go build -v -trimpath .
 
-  # create a release when a tag is pushed
+  # create a release for macOS and Linux when a tag is pushed
   release:
     name: release
     needs: test
@@ -130,8 +130,34 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: build and release binaries
-        uses: cli/gh-extension-precompile@v2.1.0
+      - name: setup go
+        uses: ./.github/actions/setup-go
+
+      # binaries are named <os>-<arch>, which gh extension install looks for
+      - name: build binaries
+        run: |
+          for platform in darwin-amd64 darwin-arm64 linux-amd64 linux-arm64 linux-arm; do
+            GOOS="${platform%-*}" GOARCH="${platform#*-}" CGO_ENABLED=0 \
+              go build -trimpath -ldflags="-s -w" -o "dist/${platform}" .
+          done
+
+      - name: generate attestations
+        uses: actions/attest-build-provenance@v4
         with:
-            go_version_file: go.mod
-            generate_attestations: true
+          subject-path: dist/*
+
+      - name: release binaries
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          TITLE_PREFIX: ${{ github.event.repository.name }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" --clobber -- dist/*
+          else
+            prerelease=""
+            if [[ "$TAG" == *-* ]]; then
+              prerelease="--prerelease"
+            fi
+            gh release create "$TAG" $prerelease --title "$TITLE_PREFIX ${TAG#v}" --generate-notes -- dist/*
+          fi

@@ -8,6 +8,8 @@ import (
 	"github.com/majikmate/gh-mmc/cmd/initialize"
 	"github.com/majikmate/gh-mmc/cmd/pull"
 	"github.com/majikmate/gh-mmc/cmd/sync"
+	"github.com/majikmate/gh-mmc/pkg/ghapi"
+	"github.com/majikmate/gh-mmc/pkg/mmc"
 	"github.com/spf13/cobra"
 )
 
@@ -15,6 +17,12 @@ func NewRootCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "mmc <command>",
 		Short: "\nAn opinionated GitHub Classroom CLI",
+		// No command runs with an elevated gh token that a killed run left behind, or without gh being logged in
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			if err := ghapi.EnsureAuth(); err != nil {
+				mmc.Fatal(err)
+			}
+		},
 	}
 
 	cmd.AddCommand(initialize.NewCmdInit(f))
