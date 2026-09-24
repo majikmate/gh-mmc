@@ -69,6 +69,7 @@ The folder containing the `.mmc` folder created by `gh mmc init` is the classroo
 The commands can be run in any folder below their root folder. They always operate in their root folder and return to the current folder afterwards:
 - `gh mmc init` searches for the classroom root, i.e. the folder containing `.mmc/classroom.json`, or for a new classroom, the folder containing the accounts file. If it finds neither, it aborts with an error.
 - `gh mmc pull` searches for the course root, i.e. the folder containing `.mmc/course.json`, and then for the classroom root. If it finds neither, it aborts with an error.
+- `gh mmc sync`, `gh mmc check`, `gh mmc clean` and `gh mmc delete` search for the course root. If they do not find one, they abort with an error.
 
 ## Courses
 
@@ -107,6 +108,14 @@ There is only one student repository per student in a course, named after the Gi
 `gh mmc sync` synchronizes the student repositories of a course with the starter repository on GitHub, so that the students can pull the changes of the starter repository, e.g., example code that shall be distributed to the students. It must be run within a course folder and always operates in the course folder. If there is no course folder, it aborts with an error.
 
 The command does everything `gh mmc pull` does. Additionally, it synchronizes the default branch of every valid student repository on GitHub with the starter repository before pulling it, so that the local clones have the latest state. Student repositories created in the same run are up to date already. Student repositories whose changes conflict with the changes of the starter repository cannot be synchronized and are reported as an error. Invalid student repositories are only reported and not synchronized.
+
+## Cleaning and deleting
+
+`gh mmc clean` removes the local clones of the starter repository and of the student repositories of the course. The repositories on GitHub are not changed, so `gh mmc pull` clones them again. Local clones with uncommitted or unpushed changes are kept, so that no work is lost.
+
+`gh mmc delete` deletes the starter repository and the student repositories of the course on GitHub and locally. This cannot be undone. The command lists all repositories it deletes, including local clones with changes that are not pushed, and asks you to type the name of the classroom to confirm. Deleting the private starter repository on GitHub deletes all its forks as well, e.g. the ones of students that are not on the roster anymore, so the student repositories are deleted first, and the starter repository is kept if any of them cannot be deleted. A local clone is only deleted after its repository on GitHub was deleted. Deleting requires the gh token to have the `delete_repo` scope, which is added for deleting and removed again afterwards if necessary, both requiring you to authenticate in the browser.
+
+Both commands only remove folders that are a clone of the repository, and keep the metadata of the course, so that `gh mmc pull` can set up the course again.
 
 ## Status
 

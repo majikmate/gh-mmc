@@ -130,6 +130,17 @@ func MergeUpstream(client *api.RESTClient, repository GithubRepository, branch s
 	return response.MergeType, nil
 }
 
+// DeleteRepository deletes the repository, which requires the delete_repo scope. A deleted repository cannot be
+// restored if it is part of a fork network.
+func DeleteRepository(client *api.RESTClient, repository GithubRepository) error {
+	return client.Delete(fmt.Sprintf("repos/%s", repository.FullName), nil)
+}
+
+// ListForks returns all forks of the repository
+func ListForks(client *api.RESTClient, repository GithubRepository) ([]GithubRepository, error) {
+	return getAllPages[GithubRepository](client, fmt.Sprintf("repos/%s/forks", repository.FullName))
+}
+
 // IsNotFound checks if the error is a Not Found response of the GitHub API
 func IsNotFound(err error) bool {
 	var httpErr *api.HTTPError

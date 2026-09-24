@@ -653,7 +653,7 @@ const starterCreated = "created"
 // which is clean if pulling did not change anything.
 func syncClone(client *api.RESTClient, repository ghapi.GithubRepository, folder string) (string, error) {
 	if _, err := os.Stat(folder); err == nil {
-		if !isCloneOf(folder, repository) {
+		if !mmc.IsCloneOf(folder, repository.FullName) {
 			return "", fmt.Errorf("folder %s exists, but is not a clone of %s", folder, repository.FullName)
 		}
 		before, _ := gitHead(folder)
@@ -707,20 +707,4 @@ func pullRepository(repoPath, defaultBranch string) error {
 	}
 
 	return nil
-}
-
-// isCloneOf checks if the folder is a git repository whose origin is the repository
-func isCloneOf(folder string, repository ghapi.GithubRepository) bool {
-	if _, err := os.Stat(filepath.Join(folder, ".git")); err != nil {
-		return false
-	}
-
-	out, err := exec.Command("git", "-C", folder, "remote", "get-url", "origin").Output()
-	if err != nil {
-		return false
-	}
-
-	url := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(string(out)), ".git"))
-	fullName := strings.ToLower(repository.FullName)
-	return strings.HasSuffix(url, "/"+fullName) || strings.HasSuffix(url, ":"+fullName)
 }

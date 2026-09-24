@@ -4,6 +4,7 @@ import (
 	"github.com/cli/cli/v2/pkg/cmdutil"
 	"github.com/majikmate/gh-mmc/cmd/check"
 	"github.com/majikmate/gh-mmc/cmd/codespaces"
+	"github.com/majikmate/gh-mmc/cmd/deletion"
 	"github.com/majikmate/gh-mmc/cmd/initialize"
 	"github.com/majikmate/gh-mmc/cmd/pull"
 	"github.com/majikmate/gh-mmc/cmd/sync"
@@ -21,6 +22,8 @@ func NewRootCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd.AddCommand(sync.NewCmdSync(f))
 	cmd.AddCommand(check.NewCmdCheck(f))
 	cmd.AddCommand(codespaces.NewCmdCodespaces(f))
+	cmd.AddCommand(deletion.NewCmdClean(f))
+	cmd.AddCommand(deletion.NewCmdDelete(f))
 
 	return cmd
 }
