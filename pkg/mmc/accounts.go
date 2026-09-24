@@ -22,17 +22,6 @@ const (
 	githubUserHeader = "GitHub User"
 )
 
-type Accounts []student
-
-func (a *Accounts) GetRepoName(user string) (string, error) {
-	for _, acc := range *a {
-		if acc.GithubUser == user {
-			return acc.RepoName(), nil
-		}
-	}
-	return "", fmt.Errorf("GitHub user %s not found", user)
-}
-
 var (
 	ErrAccountsNotFound = errors.New("no classroom found: run `gh mmc init` in a classroom folder or in a folder containing an accounts file [Aa]ccounts*.xlsx")
 )

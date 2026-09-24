@@ -118,18 +118,6 @@ func PromptForOrganization(client *api.RESTClient) (GitHubOrganization, error) {
 	return optionMap[answer.Organization], nil
 }
 
-// GetStateIndicator returns a colored emoji indicator for the codespace state
-func GetStateIndicator(state string) string {
-	switch state {
-	case "Available":
-		return "●"
-	case "Shutdown":
-		return "○"
-	default:
-		return "◐"
-	}
-}
-
 func PromptForCodespaceSelection(codespaces []GitHubCodespace, orgName string, getUserDisplayName func(string) string) ([]GitHubCodespace, error) {
 	// Filter out running codespaces and those with uncommitted/unpushed changes
 	cleanNonRunningCodespaces := make([]GitHubCodespace, 0)

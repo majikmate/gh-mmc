@@ -47,7 +47,6 @@ func NewCmdCodespaces(f *cmdutil.Factory) *cobra.Command {
 
 func NewCmdCodespacesList(f *cmdutil.Factory) *cobra.Command {
 	var orgName string
-	var verbose bool
 
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -234,7 +233,6 @@ $ gh mmc codespaces list --org my-org`,
 	}
 
 	cmd.Flags().StringVarP(&orgName, "org", "o", "", "Organization name (if not provided, will be detected from classroom metadata or prompted)")
-	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose error output")
 
 	return cmd
 }

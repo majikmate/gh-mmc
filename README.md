@@ -1,8 +1,15 @@
 [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
 
-# majikmate Classroom
+# gh mmc
 
-This extension is an opinionated [GitHub Classroom](https://classroom.github.com) extension for GitHub CLI to easily work with GitHub Classrooms and student repos. Currently, its main purpose is to clone and pull GitHub Classroom assignments and starter repos as well as to sync changes from the starter repo to the student repos.
+This extension is an opinionated [GitHub CLI](https://cli.github.com) extension for teachers to manage the student repositories of their classes in a GitHub organization. It works directly with the organization and its repositories and does not use GitHub Classroom:
+
+- `gh mmc init` creates the roster of a classroom from an Excel file and invites the students to the organization
+- `gh mmc pull` creates a course from a template repository, i.e. a private starter repository and a student repository forked from it for every student, and clones and pulls them
+- `gh mmc sync` distributes the changes of the starter repository to the student repositories
+- `gh mmc check` compares the files of the students within each assignment to detect potential plagiarism
+- `gh mmc codespaces` lists and removes the codespaces of the organization
+- `gh mmc clean` and `gh mmc delete` remove the local clones of a course, or its repositories on GitHub and locally
 
 # Installation
 - Install the gh cli
@@ -70,6 +77,7 @@ The commands can be run in any folder below their root folder. They always opera
 - `gh mmc init` searches for the classroom root, i.e. the folder containing `.mmc/classroom.json`, or for a new classroom, the folder containing the accounts file. If it finds neither, it aborts with an error.
 - `gh mmc pull` searches for the course root, i.e. the folder containing `.mmc/course.json`, and then for the classroom root. If it finds neither, it aborts with an error.
 - `gh mmc sync`, `gh mmc check`, `gh mmc clean` and `gh mmc delete` search for the course root. If they do not find one, they abort with an error.
+- `gh mmc codespaces` can be run in any folder. Within a course or a classroom, it only operates on the codespaces of their repositories, see [Codespaces](#codespaces).
 
 ## Courses
 
@@ -109,6 +117,47 @@ There is only one student repository per student in a course, named after the Gi
 
 The command does everything `gh mmc pull` does. Additionally, it synchronizes the default branch of every valid student repository on GitHub with the starter repository before pulling it, so that the local clones have the latest state. Student repositories created in the same run are up to date already. Student repositories whose changes conflict with the changes of the starter repository cannot be synchronized and are reported as an error. Invalid student repositories are only reported and not synchronized.
 
+## Checking for plagiarism
+
+`gh mmc check` compares the submissions of the students of a course to detect potential plagiarism. It compares the local clones of the student repositories, so run `gh mmc pull` first. Students whose repository is not cloned are listed and skipped. The starter repository is not compared.
+
+Every folder in the folder `20-assignments` of a student repository is an assignment:
+
+```
+classroom/course/lastname.firstname/20-assignments/assignment
+```
+
+Within every assignment, every file of a student is compared with every file of every other student. Only files with the given extensions are compared, empty files are skipped. Before comparing, empty lines and comments are removed and whitespace is normalized. The similarity of two files is the share of distinct lines they have in common (Jaccard similarity), from 0% for completely different to 100% for identical files. The similarity of two students in an assignment is the highest similarity of any of their files.
+
+The command lists every pair of students whose similarity reaches the threshold in at least one assignment, with the files that reach it. Similarities of 90% and above are highlighted in red.
+
+| Option | Default | Description |
+|---|---|---|
+| `-e`, `--extension` | `.html` | File extensions to compare, e.g. `.html,.css,.js` |
+| `-t`, `--threshold` | `70` | Similarity in percent from which a pair of students is listed |
+| `-i`, `--ignore` | | File names without extension to ignore, e.g. `reset,normalize` |
+| `-o`, `--order-by` | `assignment` | Order the results by `assignment` or `student` |
+| `-u`, `--student` | | Only list the pairs of this student, e.g. `lastname.firstname` |
+| `-n`, `--assignment` | | Only list this assignment |
+| `-d`, `--diff` | | Show the diffs of listed cases, see below |
+| `-v`, `--verbose` | | Print details of the analysis |
+
+With `--diff`, the command prompts for a case after listing the results: `1` opens the files of all assignments of case 1, `1.2` the files of the second assignment of case 1. Every pair of files is opened side by side in FileMerge (`opendiff`), which is part of the Xcode command line tools on macOS. `p` lists the results again, `q` quits.
+
+```bash
+gh mmc check -e .html,.css -t 80 --diff
+```
+
+## Codespaces
+
+`gh mmc codespaces list` lists the codespaces owned by the organization, with their state, git status, repository, user, machine, idle timeout, prebuild and last usage. Users that are on the roster are shown by their folder name *lastname*.*firstname*.
+
+`gh mmc codespaces rm` lets you select codespaces and deletes them after confirmation. With `--all`, it selects all codespaces that are not running and have no uncommitted or unpushed changes, so that no work is lost.
+
+Both commands operate on the organization given with `--org`, or else on the organization of the classroom. Outside of a classroom, you will be prompted to select the organization. Run within a course, they only operate on the codespaces of the starter repository and the student repositories of the course, and run within a classroom outside of a course, on the codespaces of all its courses.
+
+Managing the codespaces of an organization requires you to be an owner of the organization and the gh token to have the `admin:org` scope. If it does not have it, the scope is added and removed again afterwards, as for inviting students.
+
 ## Cleaning and deleting
 
 `gh mmc clean` removes the local clones of the starter repository and of the student repositories of the course. The repositories on GitHub are not changed, so `gh mmc pull` clones them again. Local clones with uncommitted or unpushed changes are kept, so that no work is lost.
@@ -143,7 +192,7 @@ Course module-ts in organization HTLD-MMC-TEST:
 
 See [Commands](#commands) for further details.
 
-### Commands
+## Commands
 
 For more information and a list of available commands
 
@@ -161,12 +210,7 @@ See [CODEOWNERS](CODEOWNERS)
 
 ## Attribution and Thanks
 
-**GitHub Classroom**
+This extension started out as an extension of the great [GitHub Classroom CLI](https://github.com/github/gh-classroom). It does not use GitHub Classroom anymore, but parts of its code are derived from the GitHub Classroom CLI and are licensed under its original licenses:
 
-This extension is heavily inspired by the great GitHub Classroom CLI available here:
-
-- [GitHub Classroom CLI](https://github.com/github/gh-classroom)
-
-**Licenses**
-- [Orignial License 1](LICENSE-1.txt)
-- [Orignial License 2](LICENSE-2.txt)
+- [Original License 1](LICENSE-1.txt)
+- [Original License 2](LICENSE-2.txt)

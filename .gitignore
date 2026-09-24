@@ -3,8 +3,4 @@
 *.xlsx
 **/.git/
 gh-mmc
-web-part*
-singleton*
-observer*
-module*
 *-SWP

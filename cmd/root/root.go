@@ -16,7 +16,7 @@ import (
 func NewRootCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "mmc <command>",
-		Short: "\nAn opinionated GitHub Classroom CLI",
+		Short: "\nAn opinionated CLI to manage the student repositories of classes in a GitHub organization",
 		// No command runs with an elevated gh token that a killed run left behind, or without gh being logged in
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			if err := ghapi.EnsureAuth(); err != nil {
