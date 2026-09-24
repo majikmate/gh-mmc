@@ -26,6 +26,15 @@ func (a *student) RepoName() string {
 	}
 }
 
+// FolderName returns the name of the local folder of the student, i.e. lastname.firstname made from the part of
+// the email before the @, which is firstname.lastname, or the GitHub user if there is no email
+func (a *student) FolderName() string {
+	if name := a.RepoName(); name != "" {
+		return name
+	}
+	return a.GithubUser
+}
+
 type org struct {
 	Id    int
 	Login string
@@ -38,27 +47,13 @@ type classroom struct {
 
 type mmc struct {
 	Organization org
-	Classroom    classroom
+	Classroom    classroom `json:",omitzero"`
 	Students     []student
 }
 
 var (
 	ErrClassroomNotFound = errors.New("no classroom found: run `gh mmc init` to create a classroom or change to a classroom folder")
 )
-
-func IsClassroomFolder() (bool, error) {
-	currentDir, err := os.Getwd()
-	if err != nil {
-		return false, fmt.Errorf("failed to get current directory: %v", err)
-	}
-
-	p := filepath.Join(currentDir, mmcFolder, classroomFile)
-	if _, err := os.Stat(p); os.IsNotExist(err) {
-		return false, nil
-	}
-
-	return true, nil
-}
 
 func NewClassroom() *mmc {
 	return &mmc{}
@@ -111,6 +106,9 @@ func LoadClassroom() (*mmc, error) {
 		return nil, fmt.Errorf("failed to unmarshal %s file: %v", p, err)
 	}
 
+	// The name of the folder containing the .mmc folder is the name of the classroom
+	c.Classroom.Name = filepath.Base(classroomFolder)
+
 	return c, nil
 }
 
@@ -118,13 +116,6 @@ func (c *mmc) SetOrganization(id int, login string) {
 	c.Organization = org{
 		Id:    id,
 		Login: login,
-	}
-}
-
-func (c *mmc) SetClassroom(id int, name string) {
-	c.Classroom = classroom{
-		Name: name,
-		Id:   id,
 	}
 }
 
@@ -136,10 +127,11 @@ func (c *mmc) AddStudent(name, email, githubUser string) {
 	})
 }
 
+// GetRepoName returns the name of the local folder of the student with the GitHub user, i.e. lastname.firstname
 func (c *mmc) GetRepoName(githubUser string) (string, error) {
 	for _, s := range c.Students {
-		if s.GithubUser == githubUser {
-			return s.RepoName(), nil
+		if strings.EqualFold(s.GithubUser, githubUser) {
+			return s.FolderName(), nil
 		}
 	}
 	return "", fmt.Errorf("GitHub user %s not found", githubUser)

@@ -203,33 +203,6 @@ func jaccardSimilarity(lines1, lines2 []string) float64 {
 	return (float64(intersection) / float64(union)) * 100.0
 }
 
-// FindStudentFolders finds all student folders in a classroom directory
-func FindStudentFolders(classroomPath string, starterFolderPrefix string) ([]string, error) {
-	entries, err := os.ReadDir(classroomPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read classroom directory: %v", err)
-	}
-
-	var studentFolders []string
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-
-		name := entry.Name()
-		if strings.HasPrefix(name, ".") {
-			continue
-		}
-		if name == starterFolderPrefix {
-			continue
-		}
-
-		studentFolders = append(studentFolders, name)
-	}
-
-	return studentFolders, nil
-}
-
 // FindAssignments finds all assignment folders in a student's 20-assignments directory
 func FindAssignments(studentPath string) ([]string, error) {
 	assignmentsPath := filepath.Join(studentPath, "20-assignments")
@@ -297,13 +270,8 @@ func FindFilesWithExtension(dirPath string, extensions []string, ignoreFiles []s
 	return files, nil
 }
 
-// CompareAssignments compares files across all students and all assignments
-func CompareAssignments(classroomPath string, fileExtensions []string, starterFolder string, ignoreFiles []string, verbose bool) (*ComparisonResult, error) {
-	studentFolders, err := FindStudentFolders(classroomPath, starterFolder)
-	if err != nil {
-		return nil, err
-	}
-
+// CompareAssignments compares the files of all assignments across the student folders in the course folder
+func CompareAssignments(coursePath string, studentFolders []string, fileExtensions []string, ignoreFiles []string, verbose bool) (*ComparisonResult, error) {
 	if len(studentFolders) < 2 {
 		return nil, fmt.Errorf("need at least 2 student folders to compare")
 	}
@@ -326,7 +294,7 @@ func CompareAssignments(classroomPath string, fileExtensions []string, starterFo
 	// Get all unique assignments across all students
 	assignmentSet := make(map[string]bool)
 	for _, student := range studentFolders {
-		studentPath := filepath.Join(classroomPath, student)
+		studentPath := filepath.Join(coursePath, student)
 		assignments, err := FindAssignments(studentPath)
 		if err != nil {
 			if verbose {
@@ -358,7 +326,7 @@ func CompareAssignments(classroomPath string, fileExtensions []string, starterFo
 	for _, assignment := range result.Assignments {
 		// Compare each pair of students for this assignment
 		for i, student1 := range studentFolders {
-			student1AssignmentPath := filepath.Join(classroomPath, student1, "20-assignments", assignment)
+			student1AssignmentPath := filepath.Join(coursePath, student1, "20-assignments", assignment)
 
 			// Check if this student has this assignment
 			if _, err := os.Stat(student1AssignmentPath); os.IsNotExist(err) {
@@ -381,7 +349,7 @@ func CompareAssignments(classroomPath string, fileExtensions []string, starterFo
 			// Compare with all other students
 			for j := i + 1; j < len(studentFolders); j++ {
 				student2 := studentFolders[j]
-				student2AssignmentPath := filepath.Join(classroomPath, student2, "20-assignments", assignment)
+				student2AssignmentPath := filepath.Join(coursePath, student2, "20-assignments", assignment)
 
 				// Check if student2 has this assignment
 				if _, err := os.Stat(student2AssignmentPath); os.IsNotExist(err) {

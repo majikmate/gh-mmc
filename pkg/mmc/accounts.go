@@ -1,7 +1,9 @@
 package mmc
 
 import (
+	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"path/filepath"
@@ -29,6 +31,37 @@ func (a *Accounts) GetRepoName(user string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("GitHub user %s not found", user)
+}
+
+var (
+	ErrAccountsNotFound = errors.New("no classroom found: run `gh mmc init` in a classroom folder or in a folder containing an accounts file [Aa]ccounts*.xlsx")
+)
+
+// FindAccountsFolder searches upwards from the current directory to find a folder containing an accounts file
+// Returns the absolute path to the folder, or an error if not found
+func FindAccountsFolder() (string, error) {
+	currentDir, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("failed to get current directory: %v", err)
+	}
+
+	for {
+		entries, err := os.ReadDir(currentDir)
+		if err == nil {
+			for _, e := range entries {
+				if matched, _ := filepath.Match(accountsFilePattern, e.Name()); matched && !e.IsDir() {
+					return currentDir, nil
+				}
+			}
+		}
+
+		parentDir := filepath.Dir(currentDir)
+		if parentDir == currentDir {
+			return "", ErrAccountsNotFound
+		}
+
+		currentDir = parentDir
+	}
 }
 
 // check if an account file is available in the current folder and return the name of it

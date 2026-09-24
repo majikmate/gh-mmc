@@ -23,9 +23,10 @@ func NewCmdCodespaces(f *cmdutil.Factory) *cobra.Command {
 		
 			Manage codespaces owned by organizations, including listing and removing them.
 
-			When run inside an assignment folder, commands will only show codespaces for 
-			repositories belonging to that assignment. Otherwise, shows all codespaces 
-			for the organization.
+			When run within a course folder, the commands only show the codespaces of the
+			starter repository and the student repositories of the course. When run within a
+			classroom folder outside of a course, they show the codespaces of all courses of
+			the classroom. Otherwise, they show all codespaces of the organization.
 
 			The organization is looked up from the classroom metadata if it exists, 
 			otherwise you will be prompted to select an organization from your available 
@@ -50,10 +51,10 @@ func NewCmdCodespacesList(f *cmdutil.Factory) *cobra.Command {
 			Lists all codespaces owned by a specific organization, including their active 
 			state and machine information.
 
-			When run inside an assignment folder, only shows codespaces for repositories 
-			belonging to that assignment. When run inside a classroom folder (but not an 
-			assignment folder), shows codespaces for all repositories belonging to that 
-			classroom. Otherwise, shows all codespaces for the organization.
+			When run within a course folder, only shows the codespaces of the starter
+			repository and the student repositories of the course. When run within a
+			classroom folder outside of a course, shows the codespaces of all courses of the
+			classroom. Otherwise, shows all codespaces of the organization.
 
 			The organization is looked up from the classroom metadata if it exists, 
 			otherwise you will be prompted to select an organization from your available 
@@ -69,109 +70,8 @@ $ gh mmc codespaces list --org my-org`,
 				mmc.Fatal(fmt.Errorf("failed to create gh client: %v", err))
 			}
 
-			// Try to get organization from classroom metadata
-			if orgName == "" {
-				c, err := mmc.LoadClassroom()
-				if err != nil {
-					if errors.Is(err, mmc.ErrClassroomNotFound) {
-						// Prompt for organization selection
-						org, err := ghapi.PromptForOrganization(client)
-						if err != nil {
-							mmc.Fatal(fmt.Errorf("failed to select organization: %v", err))
-						}
-						orgName = org.Login
-					} else {
-						mmc.Fatal(err)
-					}
-				} else {
-					orgName = c.Organization.Login
-				}
-			}
-
-			fmt.Printf("Fetching codespaces for organization: %s", orgName)
-
-			// Get codespaces for the organization
-			codespaces, err := ghapi.GetCodespacesForOrg(client, orgName)
-			if err != nil {
-				mmc.Fatal(fmt.Errorf("failed to get codespaces: %v", err))
-			}
-
-			// Check if we're in an assignment folder and filter accordingly
-			a, err := mmc.LoadAssignment()
-			if err == nil {
-				// We're in an assignment folder, filter codespaces by assignment repositories
-				fmt.Printf(" (filtered by assignment: %s)\n", a.Name)
-
-				// Get accepted assignments for this assignment
-				acceptedAssignmentList, err := ghapi.ListAllAcceptedAssignments(client, a.Id, 15)
-				if err != nil {
-					mmc.Fatal(fmt.Errorf("failed to get accepted assignments: %v", err))
-				}
-
-				// Create a map of repository full names for quick lookup
-				assignmentRepos := make(map[string]bool)
-				for _, acceptedAssignment := range acceptedAssignmentList.AcceptedAssignments {
-					assignmentRepos[acceptedAssignment.Repository.FullName] = true
-				}
-
-				// Filter codespaces to only include those from assignment repositories
-				var filteredCodespaces []ghapi.GitHubCodespace
-				for _, cs := range codespaces {
-					if assignmentRepos[cs.Repository.FullName] {
-						filteredCodespaces = append(filteredCodespaces, cs)
-					}
-				}
-				codespaces = filteredCodespaces
-			} else if !errors.Is(err, mmc.ErrAssignmentNotFound) {
-				mmc.Fatal(fmt.Errorf("failed to check assignment context: %v", err))
-			} else {
-				// We're not in an assignment folder, but check if we're in a classroom folder
-				// If so, filter codespaces by all classroom assignments
-				c, err := mmc.LoadClassroom()
-				if err == nil {
-					fmt.Printf(" (filtered by classroom: %s)\n", c.Classroom.Name)
-
-					// Get all assignments for this classroom
-					allAssignments, err := ghapi.ListAllAssignments(client, c.Classroom.Id)
-					if err != nil {
-						mmc.Fatal(fmt.Errorf("failed to get classroom assignments: %v", err))
-					}
-
-					// Collect all repository full names from all assignments
-					classroomRepos := make(map[string]bool)
-
-					// For each assignment, get all accepted assignments and their repositories
-					for _, assignment := range allAssignments {
-						acceptedAssignmentList, err := ghapi.ListAllAcceptedAssignments(client, assignment.Id, 15)
-						if err != nil {
-							// Log error but continue with other assignments
-							fmt.Printf("Warning: failed to get accepted assignments for assignment %s: %v\n", assignment.Title, err)
-							continue
-						}
-
-						for _, acceptedAssignment := range acceptedAssignmentList.AcceptedAssignments {
-							classroomRepos[acceptedAssignment.Repository.FullName] = true
-						}
-
-						// Also include the starter code repository if it exists
-						if assignment.StarterCodeRepository.Id != 0 {
-							classroomRepos[assignment.StarterCodeRepository.FullName] = true
-						}
-					}
-
-					// Filter codespaces to only include those from classroom repositories
-					var filteredCodespaces []ghapi.GitHubCodespace
-					for _, cs := range codespaces {
-						if classroomRepos[cs.Repository.FullName] {
-							filteredCodespaces = append(filteredCodespaces, cs)
-						}
-					}
-					codespaces = filteredCodespaces
-				} else {
-					fmt.Println()
-				}
-			}
-			fmt.Println()
+			var codespaces []ghapi.GitHubCodespace
+			orgName, codespaces = loadCodespaces(client, orgName)
 
 			if len(codespaces) == 0 {
 				fmt.Printf("No codespaces found for organization %s\n", orgName)
@@ -332,10 +232,10 @@ func NewCmdCodespacesRm(f *cmdutil.Factory) *cobra.Command {
 		
 			Interactively select and remove codespaces for a specific organization.
 
-			When run inside an assignment folder, only shows codespaces for repositories 
-			belonging to that assignment. When run inside a classroom folder (but not an 
-			assignment folder), shows codespaces for all repositories belonging to that 
-			classroom. Otherwise, shows all codespaces for the organization.
+			When run within a course folder, only shows the codespaces of the starter
+			repository and the student repositories of the course. When run within a
+			classroom folder outside of a course, shows the codespaces of all courses of the
+			classroom. Otherwise, shows all codespaces of the organization.
 
 			This command will show you all available codespaces and allow you to 
 			select which ones to delete. You can select multiple codespaces at once.
@@ -357,109 +257,8 @@ $ gh mmc codespaces rm --org my-org --all`,
 				mmc.Fatal(fmt.Errorf("failed to create gh client: %v", err))
 			}
 
-			// Try to get organization from classroom metadata
-			if orgName == "" {
-				c, err := mmc.LoadClassroom()
-				if err != nil {
-					if errors.Is(err, mmc.ErrClassroomNotFound) {
-						// Prompt for organization selection
-						org, err := ghapi.PromptForOrganization(client)
-						if err != nil {
-							mmc.Fatal(fmt.Errorf("failed to select organization: %v", err))
-						}
-						orgName = org.Login
-					} else {
-						mmc.Fatal(err)
-					}
-				} else {
-					orgName = c.Organization.Login
-				}
-			}
-
-			fmt.Printf("Fetching codespaces for organization: %s", orgName)
-
-			// Get codespaces for the organization
-			codespaces, err := ghapi.GetCodespacesForOrg(client, orgName)
-			if err != nil {
-				mmc.Fatal(fmt.Errorf("failed to get codespaces: %v", err))
-			}
-
-			// Check if we're in an assignment folder and filter accordingly
-			a, err := mmc.LoadAssignment()
-			if err == nil {
-				// We're in an assignment folder, filter codespaces by assignment repositories
-				fmt.Printf(" (filtered by assignment: %s)\n", a.Name)
-
-				// Get accepted assignments for this assignment
-				acceptedAssignmentList, err := ghapi.ListAllAcceptedAssignments(client, a.Id, 15)
-				if err != nil {
-					mmc.Fatal(fmt.Errorf("failed to get accepted assignments: %v", err))
-				}
-
-				// Create a map of repository full names for quick lookup
-				assignmentRepos := make(map[string]bool)
-				for _, acceptedAssignment := range acceptedAssignmentList.AcceptedAssignments {
-					assignmentRepos[acceptedAssignment.Repository.FullName] = true
-				}
-
-				// Filter codespaces to only include those from assignment repositories
-				var filteredCodespaces []ghapi.GitHubCodespace
-				for _, cs := range codespaces {
-					if assignmentRepos[cs.Repository.FullName] {
-						filteredCodespaces = append(filteredCodespaces, cs)
-					}
-				}
-				codespaces = filteredCodespaces
-			} else if !errors.Is(err, mmc.ErrAssignmentNotFound) {
-				mmc.Fatal(fmt.Errorf("failed to check assignment context: %v", err))
-			} else {
-				// We're not in an assignment folder, but check if we're in a classroom folder
-				// If so, filter codespaces by all classroom assignments
-				c, err := mmc.LoadClassroom()
-				if err == nil {
-					fmt.Printf(" (filtered by classroom: %s)\n", c.Classroom.Name)
-
-					// Get all assignments for this classroom
-					allAssignments, err := ghapi.ListAllAssignments(client, c.Classroom.Id)
-					if err != nil {
-						mmc.Fatal(fmt.Errorf("failed to get classroom assignments: %v", err))
-					}
-
-					// Collect all repository full names from all assignments
-					classroomRepos := make(map[string]bool)
-
-					// For each assignment, get all accepted assignments and their repositories
-					for _, assignment := range allAssignments {
-						acceptedAssignmentList, err := ghapi.ListAllAcceptedAssignments(client, assignment.Id, 15)
-						if err != nil {
-							// Log error but continue with other assignments
-							fmt.Printf("Warning: failed to get accepted assignments for assignment %s: %v\n", assignment.Title, err)
-							continue
-						}
-
-						for _, acceptedAssignment := range acceptedAssignmentList.AcceptedAssignments {
-							classroomRepos[acceptedAssignment.Repository.FullName] = true
-						}
-
-						// Also include the starter code repository if it exists
-						if assignment.StarterCodeRepository.Id != 0 {
-							classroomRepos[assignment.StarterCodeRepository.FullName] = true
-						}
-					}
-
-					// Filter codespaces to only include those from classroom repositories
-					var filteredCodespaces []ghapi.GitHubCodespace
-					for _, cs := range codespaces {
-						if classroomRepos[cs.Repository.FullName] {
-							filteredCodespaces = append(filteredCodespaces, cs)
-						}
-					}
-					codespaces = filteredCodespaces
-				} else {
-					fmt.Println()
-				}
-			}
-			fmt.Println()
+			var codespaces []ghapi.GitHubCodespace
+			orgName, codespaces = loadCodespaces(client, orgName)
 
 			if len(codespaces) == 0 {
 				fmt.Printf("No codespaces found for organization %s\n", orgName)
@@ -583,6 +382,99 @@ $ gh mmc codespaces rm --org my-org --all`,
 	cmd.Flags().BoolVarP(&all, "all", "a", false, "Delete all clean non-running codespaces (excludes those with uncommitted/unpushed changes)")
 
 	return cmd
+}
+
+// loadCodespaces returns the organization and its codespaces. The organization is the one given, the one of the
+// classroom or selected by the user. Within a course, only the codespaces of the starter repository and the student
+// repositories of the course are returned, within a classroom outside of a course the ones of all its courses.
+func loadCodespaces(client *api.RESTClient, orgName string) (string, []ghapi.GitHubCodespace) {
+	if orgName == "" {
+		c, err := mmc.LoadClassroom()
+		if err != nil {
+			if !errors.Is(err, mmc.ErrClassroomNotFound) {
+				mmc.Fatal(err)
+			}
+			org, err := ghapi.PromptForOrganization(client)
+			if err != nil {
+				mmc.Fatal(fmt.Errorf("failed to select organization: %v", err))
+			}
+			orgName = org.Login
+		} else {
+			orgName = c.Organization.Login
+		}
+	}
+
+	fmt.Printf("Fetching codespaces for organization: %s", orgName)
+
+	codespaces, err := ghapi.GetCodespacesForOrg(client, orgName)
+	if err != nil {
+		mmc.Fatal(fmt.Errorf("failed to get codespaces: %v", err))
+	}
+
+	repositories, scope := scopeRepositories(orgName)
+	if repositories != nil {
+		fmt.Printf(" (filtered by %s)", scope)
+		filtered := []ghapi.GitHubCodespace{}
+		for _, cs := range codespaces {
+			if repositories[strings.ToLower(cs.Repository.FullName)] {
+				filtered = append(filtered, cs)
+			}
+		}
+		codespaces = filtered
+	}
+	fmt.Print("\n\n")
+
+	return orgName, codespaces
+}
+
+// scopeRepositories returns the lowercase full names of the repositories whose codespaces are shown, and a
+// description of that scope. Within a course, these are the starter repository and the student repositories of the
+// course, within a classroom outside of a course the ones of all its courses. Outside of a classroom, or for another
+// organization than the one of the classroom, it returns nil to show all codespaces of the organization.
+func scopeRepositories(orgName string) (map[string]bool, string) {
+	c, err := mmc.LoadClassroom()
+	if err != nil {
+		if !errors.Is(err, mmc.ErrClassroomNotFound) {
+			mmc.Fatal(err)
+		}
+		return nil, ""
+	}
+	if !strings.EqualFold(orgName, c.Organization.Login) {
+		return nil, ""
+	}
+
+	repositories := make(map[string]bool)
+	addCourse := func(course string, starterURL string) {
+		if fullName, err := ghapi.FullNameFromURL(starterURL); err == nil {
+			repositories[strings.ToLower(fullName)] = true
+		}
+		for _, s := range c.Students {
+			name := mmc.StudentRepositoryName(c.Classroom.Name, course, s.GithubUser)
+			repositories[strings.ToLower(c.Organization.Login+"/"+name)] = true
+		}
+	}
+
+	if _, err := mmc.FindCourseFolder(); err == nil {
+		crs, err := mmc.LoadCourse()
+		if err != nil {
+			mmc.Fatal(err)
+		}
+		addCourse(crs.Name, crs.StarterRepository)
+		return repositories, "course " + crs.Name
+	}
+
+	classroomFolder, err := mmc.FindClassroomFolder()
+	if err != nil {
+		mmc.Fatal(err)
+	}
+	courses, err := mmc.ListCourses(classroomFolder)
+	if err != nil {
+		mmc.Fatal(err)
+	}
+	for _, crs := range courses {
+		addCourse(crs.Name, crs.StarterRepository)
+	}
+	return repositories, "classroom " + c.Classroom.Name
 }
 
 // deleteCodespace deletes a single codespace by name using the organization endpoint

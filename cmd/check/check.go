@@ -23,10 +23,8 @@ const (
 )
 
 func NewCmdCheck(f *cmdutil.Factory) *cobra.Command {
-	var aId int
 	var fileExtensions []string
 	var threshold float64
-	var starterFolder string
 	var ignoreFiles []string
 	var showDiff bool
 	var verbose bool
@@ -54,7 +52,16 @@ func NewCmdCheck(f *cmdutil.Factory) *cobra.Command {
 			- Using line-based Jaccard similarity detection
 			
 			The similarity percentage ranges from 0% (completely different) to 100% 
-			(identical content).`),
+			(identical content).
+
+			The command must be run within a course folder, i.e. the folder containing the .mmc
+			folder with the course.json file or any folder below it. It always operates in the
+			course folder and returns to the current folder afterwards. If there is no course
+			folder, it aborts with an error.
+
+			The command compares the local clones of the student repositories of all students on
+			the roster, i.e. the folders lastname.firstname of the course folder. Run gh mmc pull
+			to clone and pull them first. The starter repository is not compared.`),
 		Example: heredoc.Doc(`
 			# Check HTML files across all assignments
 			$ gh mmc check --extension .html
@@ -65,46 +72,38 @@ func NewCmdCheck(f *cmdutil.Factory) *cobra.Command {
 			# Check JavaScript files
 			$ gh mmc check -e .js -t 75`),
 		Run: func(cmd *cobra.Command, args []string) {
-			startingDir, err := os.Getwd()
+			// Execute in the course root and return to the current folder afterwards
+			courseFolder, err := mmc.FindCourseFolder()
 			if err != nil {
-				mmc.Fatal(fmt.Errorf("failed to get current directory: %v", err))
+				mmc.Fatal(err)
 			}
-			defer func() {
-				_ = os.Chdir(startingDir)
-			}()
+			restore, err := mmc.ChangeToFolder(courseFolder)
+			if err != nil {
+				mmc.Fatal(err)
+			}
+			defer restore()
 
 			c, err := mmc.LoadClassroom()
 			if err != nil {
 				mmc.Fatal(err)
 			}
-
-			// Try to find assignment folder first (module-html-css level with students)
-			// If not found, try classroom folder
-			var searchPath string
-			assignmentFolder, err := mmc.FindAssignmentFolder()
-			if err == nil {
-				// We're in or below an assignment folder - use it as the search path
-				searchPath = assignmentFolder
-				err = os.Chdir(assignmentFolder)
-				if err != nil {
-					mmc.Fatal(fmt.Errorf("failed to change to assignment directory: %v", err))
-				}
-			} else {
-				// Not in assignment, try classroom folder
-				classroomFolder, err := mmc.FindClassroomFolder()
-				if err != nil {
-					mmc.Fatal("No classroom or assignment found. Run `gh mmc init` to initialize a classroom folder or change to a classroom/assignment folder.")
-				}
-				searchPath = classroomFolder
-				err = os.Chdir(classroomFolder)
-				if err != nil {
-					mmc.Fatal(fmt.Errorf("failed to change to classroom directory: %v", err))
-				}
+			crs, err := mmc.LoadCourse()
+			if err != nil {
+				mmc.Fatal(err)
 			}
 
-			// Determine starter folder name from classroom
-			if starterFolder == "" {
-				starterFolder = c.Classroom.Name
+			// The local clones of the student repositories of the students on the roster are compared
+			studentFolders := []string{}
+			notCloned := []string{}
+			for _, s := range c.Students {
+				if info, err := os.Stat(filepath.Join(courseFolder, s.FolderName())); err == nil && info.IsDir() {
+					studentFolders = append(studentFolders, s.FolderName())
+				} else {
+					notCloned = append(notCloned, s.FolderName())
+				}
+			}
+			if len(notCloned) > 0 {
+				fmt.Printf("Not cloned, run gh mmc pull: %s\n\n", strings.Join(notCloned, ", "))
 			}
 
 			// Ensure file extensions start with a dot
@@ -115,8 +114,8 @@ func NewCmdCheck(f *cmdutil.Factory) *cobra.Command {
 			}
 
 			if verbose {
-				fmt.Printf("Checking classroom: %s\n", c.Classroom.Name)
-				fmt.Printf("Search path: %s\n", searchPath)
+				fmt.Printf("Checking course: %s\n", crs.Name)
+				fmt.Printf("Course folder: %s\n", courseFolder)
 				fmt.Printf("File extensions: %v\n", fileExtensions)
 				fmt.Printf("Threshold: %.0f%%\n", threshold)
 				if len(ignoreFiles) > 0 {
@@ -126,7 +125,7 @@ func NewCmdCheck(f *cmdutil.Factory) *cobra.Command {
 			}
 
 			// Run the comparison
-			result, err := similarity.CompareAssignments(searchPath, fileExtensions, starterFolder, ignoreFiles, verbose)
+			result, err := similarity.CompareAssignments(courseFolder, studentFolders, fileExtensions, ignoreFiles, verbose)
 			if err != nil {
 				mmc.Fatal(fmt.Errorf("failed to compare assignments: %v", err))
 			}
@@ -152,7 +151,7 @@ func NewCmdCheck(f *cmdutil.Factory) *cobra.Command {
 			}
 
 			// Print overall summary and get pairs
-			pairs := printOverallSummary(students, result, threshold, fileExtensions, ignoreFiles, c.Classroom.Name, orderBy, filterStudent, filterAssignment)
+			pairs := printOverallSummary(students, result, threshold, fileExtensions, ignoreFiles, crs.Name, orderBy, filterStudent, filterAssignment)
 
 			// If diff mode is enabled, prompt for case selection
 			if showDiff && len(pairs) > 0 {
@@ -161,10 +160,8 @@ func NewCmdCheck(f *cmdutil.Factory) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().IntVarP(&aId, "assignment-id", "a", 0, "ID of the assignment to check (unused in new version)")
 	cmd.Flags().StringSliceVarP(&fileExtensions, "extension", "e", []string{".html"}, "File extensions to compare (e.g., .html,.css,.js)")
 	cmd.Flags().Float64VarP(&threshold, "threshold", "t", 70.0, "Similarity threshold percentage for warnings (0-100)")
-	cmd.Flags().StringVarP(&starterFolder, "starter-folder", "s", "", "Name of the starter code folder to exclude (defaults to classroom name)")
 	cmd.Flags().StringSliceVarP(&ignoreFiles, "ignore", "i", []string{}, "File names (without extension) to ignore (e.g., reset,normalize)")
 	cmd.Flags().BoolVarP(&showDiff, "diff", "d", false, "Interactive mode to show diffs for selected cases")
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose output")
@@ -198,10 +195,10 @@ type StudentPair struct {
 }
 
 // printOverallSummary prints a summary across all assignments and returns the pairs
-func printOverallSummary(students []string, result *similarity.ComparisonResult, threshold float64, fileExtensions []string, ignoreFiles []string, classroomName string, orderBy string, filterStudent string, filterAssignment string) []StudentPair {
+func printOverallSummary(students []string, result *similarity.ComparisonResult, threshold float64, fileExtensions []string, ignoreFiles []string, courseName string, orderBy string, filterStudent string, filterAssignment string) []StudentPair {
 
 	// Print header with parameters
-	fmt.Printf("Checking classroom: %s\n", classroomName)
+	fmt.Printf("Checking course: %s\n", courseName)
 	fmt.Printf("File extensions: %v\n", fileExtensions)
 	fmt.Printf("Threshold: %.0f%%\n", threshold)
 	if len(ignoreFiles) > 0 {
