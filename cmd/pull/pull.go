@@ -134,8 +134,8 @@ func NewCmdPull(f *cmdutil.Factory) *cobra.Command {
 
 			Run within a classroom outside of a course, the command creates a new course. The
 			user will be prompted to select a template repository from all template
-			repositories in all organizations the user is a member of, and to enter the name of
-			the course. The name of the template repository is proposed as course name. The
+			repositories that are not archived in the template organizations of the classroom,
+			which are selected by gh mmc init, and to enter the name of the course. The name of the template repository is proposed as course name. The
 			course folder <course> is created in the classroom folder, with the file
 			<course>/.mmc/course.json containing the URLs of the template repository and of the
 			starter repository <classroom>-<course> in the organization of the classroom.
@@ -268,10 +268,15 @@ func Run(opts Options) {
 	// The URLs of the template repository and of the starter repository of the course
 	var course, templateURL, starterURL string
 	if isNewCourse {
-		fmt.Println("Searching template repositories...")
-		templates, err := ghapi.ListTemplateRepositories(client)
+		templateOrgs := c.TemplateOrganizationLogins()
+		if len(templateOrgs) == 0 {
+			mmc.Fatal(errors.New("no template organizations found in classroom: run `gh mmc init` to select the organizations containing template repositories"))
+		}
+
+		fmt.Printf("Searching template repositories in %s...\n", strings.Join(templateOrgs, ", "))
+		templates, err := ghapi.ListTemplateRepositories(client, templateOrgs)
 		if err != nil {
-			mmc.Fatal(fmt.Errorf("failed to list template repositories: %v", err))
+			mmc.Fatal(fmt.Errorf("failed to search template repositories: %v", err))
 		}
 
 		template, err := ghapi.PromptForTemplateRepository(templates)

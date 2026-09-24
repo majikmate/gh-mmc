@@ -65,7 +65,7 @@ The Email should contain Emails of the students in the format
 
 The Excel file must be named with a prefix of *account* or *Account* and should have the file extension *.xlsx*. This file can be created, e.g., by gathering student details through a [Microsoft Office Forms](http://forms.office.com/) form and exporting the responses. A template can be downloaded from [Accounts](res/accounts.xltx).
 
-`gh mmc init` creates or updates the roster of the classroom from the Excel file. When running it, you will be prompted to select the GitHub organization that hosts the student repositories from the list of organizations you are a member of. The selected organization is saved in `.mmc/classroom.json`. Students that are not members of the organization are invited to it, unless an invitation is pending already.
+`gh mmc init` creates or updates the roster of the classroom from the Excel file. When running it, you will be prompted to select the GitHub organization that hosts the student repositories from the list of organizations you are a member of. Then you will be prompted to select the organizations containing the template repositories that courses are created from, see [Courses](#courses). At least one organization must be selected. The organizations selected before are preselected, or for a new classroom, the organization of the classroom. The selected organizations are saved in `.mmc/classroom.json`. Students that are not members of the organization are invited to it, unless an invitation is pending already.
 
 Inviting students (by `gh mmc init` and `gh mmc pull`) requires you to be an owner of the organization and the gh token to have the `admin:org` scope. If the token does not have it, the command adds the scope for inviting and removes it again afterwards (`gh auth refresh --scopes admin:org` and `gh auth refresh --remove-scopes admin:org`). Both require you to authenticate in the browser. If no student needs to be invited, the scope is not touched.
 
@@ -81,7 +81,7 @@ The commands can be run in any folder below their root folder. They always opera
 
 ## Courses
 
-`gh mmc pull` run within a classroom, but outside of a course, creates a new course. You will be prompted to select a template repository from all template repositories in the organizations you are a member of, and to enter the name of the course. The name of the template repository is proposed as course name.
+`gh mmc pull` run within a classroom, but outside of a course, creates a new course. You will be prompted to select a template repository from all template repositories that are not archived in the template organizations of the classroom, which are selected by `gh mmc init`, and to enter the name of the course. If the classroom has no template organizations yet, e.g. because it was created by an older version, run `gh mmc init` again to select them. The name of the template repository is proposed as course name.
 
 The command then creates, in the organization of the classroom:
 - the private starter repository *classroom*-*course* from the template repository, and

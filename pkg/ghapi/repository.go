@@ -10,7 +10,6 @@ import (
 	"os"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/AlecAivazis/survey/v2"
@@ -222,36 +221,40 @@ func AddCollaborator(client *api.RESTClient, repository GithubRepository, userna
 	return client.Put(fmt.Sprintf("repos/%s/collaborators/%s", repository.FullName, username), bytes.NewReader(body), nil)
 }
 
-// ListTemplateRepositories returns all template repositories in all organizations the current user is a member of.
-// Organizations whose repositories cannot be listed are skipped with a warning.
-func ListTemplateRepositories(client *api.RESTClient) ([]GithubRepository, error) {
-	organizations, err := ListAllOrganizations(client)
-	if err != nil {
-		return nil, err
-	}
+// maxSearchResults is the maximum number of results the search API returns for a query
+const maxSearchResults = 1000
 
-	var wg sync.WaitGroup
-	repositories := make([][]GithubRepository, len(organizations))
-	errs := make([]error, len(organizations))
-	for i, org := range organizations {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			repositories[i], errs[i] = ListAllOrganizationRepositories(client, org.Login)
-		}()
+// ListTemplateRepositories returns all template repositories in the organizations with the logins that are not
+// archived. The repositories are searched, since the endpoints listing the repositories of an organization cannot
+// filter template repositories. Forks are included, since the search excludes them by default. Organizations that do
+// not exist or cannot be accessed are ignored by the search.
+func ListTemplateRepositories(client *api.RESTClient, organizations []string) ([]GithubRepository, error) {
+	qualifiers := []string{"template:true", "archived:false", "fork:true"}
+	for _, org := range organizations {
+		qualifiers = append(qualifiers, "org:"+org)
 	}
-	wg.Wait()
+	query := url.QueryEscape(strings.Join(qualifiers, " "))
 
+	perPage := 100
 	templates := make([]GithubRepository, 0)
-	for i, orgRepositories := range repositories {
-		if errs[i] != nil {
-			fmt.Fprintf(os.Stderr, "Skipping organization %s: %v\n", organizations[i].Login, errs[i])
-			continue
+	for page := 1; ; page++ {
+		var response struct {
+			TotalCount        int                `json:"total_count"`
+			IncompleteResults bool               `json:"incomplete_results"`
+			Items             []GithubRepository `json:"items"`
 		}
-		for _, repository := range orgRepositories {
-			if repository.IsTemplate {
-				templates = append(templates, repository)
-			}
+		err := client.Get(fmt.Sprintf("search/repositories?q=%s&page=%v&per_page=%v", query, page, perPage), &response)
+		if err != nil {
+			return nil, err
+		}
+		if response.IncompleteResults {
+			fmt.Fprintln(os.Stderr, "The search for template repositories timed out, some template repositories may be missing")
+		}
+
+		templates = append(templates, response.Items...)
+
+		if len(response.Items) < perPage || len(templates) >= response.TotalCount || len(templates) >= maxSearchResults {
+			break
 		}
 	}
 

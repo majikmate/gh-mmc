@@ -41,8 +41,11 @@ func NewCmdInit(f *cmdutil.Factory) *cobra.Command {
 			- GitHub User  ... GitHub username of the student
 
 			The user will be prompted to select the GitHub organization from the list of
-			organizations the user is a member of. The selected organization is saved
-			in .mmc/classroom.json.
+			organizations the user is a member of, and then the organizations containing the
+			template repositories that courses are created from. At least one organization
+			must be selected. The organizations selected before are preselected, or for a new
+			classroom, the organization of the classroom. The selected organizations are
+			saved in .mmc/classroom.json.
 
 			Students that are not members of the organization are invited to it, unless an
 			invitation is pending already. Inviting requires the user to be an owner of the
@@ -78,13 +81,32 @@ func NewCmdInit(f *cmdutil.Factory) *cobra.Command {
 				mmc.Fatal(fmt.Errorf("failed to read accounts: %v", err))
 			}
 
-			org, err := ghapi.PromptForOrganization(client)
+			organizations, err := ghapi.ListAllOrganizations(client)
+			if err != nil {
+				mmc.Fatal(fmt.Errorf("failed to list organizations: %v", err))
+			}
+
+			org, err := ghapi.SelectOrganization(organizations)
 			if err != nil {
 				mmc.Fatal(fmt.Errorf("failed to get organization: %v", err))
 			}
 
+			// The template organizations of an existing classroom are preselected, else the organization of the
+			// classroom
+			defaults := []string{org.Login}
+			if existing, err := mmc.LoadClassroomFrom(classroomFolder); err == nil && len(existing.TemplateOrganizations) > 0 {
+				defaults = existing.TemplateOrganizationLogins()
+			}
+			templateOrgs, err := ghapi.SelectOrganizations("Select the organizations containing template repositories (ESC or Ctrl+C to cancel):", organizations, defaults)
+			if err != nil {
+				mmc.Fatal(fmt.Errorf("failed to get template organizations: %v", err))
+			}
+
 			c := mmc.NewClassroom()
 			c.SetOrganization(org.Id, org.Login)
+			for _, o := range templateOrgs {
+				c.AddTemplateOrganization(o.Id, o.Login)
+			}
 			for _, a := range as {
 				c.AddStudent(a.Name, a.Email, a.GithubUser)
 			}

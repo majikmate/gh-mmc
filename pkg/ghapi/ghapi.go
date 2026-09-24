@@ -3,10 +3,12 @@ package ghapi
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/AlecAivazis/survey/v2"
+	"github.com/AlecAivazis/survey/v2/core"
 	"github.com/AlecAivazis/survey/v2/terminal"
 	"github.com/cli/go-gh/v2/pkg/api"
 )
@@ -67,12 +69,26 @@ func ListAllOrganizations(client *api.RESTClient) ([]GitHubOrganization, error) 
 	return allOrganizations, nil
 }
 
+// PromptForOrganization prompts to select one of the organizations the current user is a member of
 func PromptForOrganization(client *api.RESTClient) (GitHubOrganization, error) {
 	organizations, err := ListAllOrganizations(client)
 	if err != nil {
 		return GitHubOrganization{}, err
 	}
 
+	return SelectOrganization(organizations)
+}
+
+// organizationOption returns the option of the organization in a prompt, i.e. its name and its login
+func organizationOption(org GitHubOrganization) string {
+	if org.Name != "" {
+		return fmt.Sprintf("%s (%s)", org.Name, org.Login)
+	}
+	return org.Login
+}
+
+// SelectOrganization prompts to select one of the organizations
+func SelectOrganization(organizations []GitHubOrganization) (GitHubOrganization, error) {
 	if len(organizations) == 0 {
 		return GitHubOrganization{}, errors.New("no organizations found")
 	}
@@ -81,10 +97,7 @@ func PromptForOrganization(client *api.RESTClient) (GitHubOrganization, error) {
 	options := make([]string, 0, len(organizations))
 
 	for _, org := range organizations {
-		displayName := org.Login
-		if org.Name != "" {
-			displayName = fmt.Sprintf("%s (%s)", org.Name, org.Login)
-		}
+		displayName := organizationOption(org)
 		optionMap[displayName] = org
 		options = append(options, displayName)
 	}
@@ -103,7 +116,7 @@ func PromptForOrganization(client *api.RESTClient) (GitHubOrganization, error) {
 		Organization string
 	}{}
 
-	err = survey.Ask(qs, &answer)
+	err := survey.Ask(qs, &answer)
 	if err != nil {
 		// Handle user cancellation (Ctrl+C, ESC, etc.)
 		if err == terminal.InterruptErr ||
@@ -116,6 +129,55 @@ func PromptForOrganization(client *api.RESTClient) (GitHubOrganization, error) {
 	}
 
 	return optionMap[answer.Organization], nil
+}
+
+// SelectOrganizations prompts to select at least one of the organizations. The organizations with the logins in
+// defaults are preselected.
+func SelectOrganizations(message string, organizations []GitHubOrganization, defaults []string) ([]GitHubOrganization, error) {
+	if len(organizations) == 0 {
+		return nil, errors.New("no organizations found")
+	}
+
+	optionMap := make(map[string]GitHubOrganization)
+	options := make([]string, 0, len(organizations))
+	selected := []string{}
+
+	for _, org := range organizations {
+		option := organizationOption(org)
+		optionMap[option] = org
+		options = append(options, option)
+		if slices.ContainsFunc(defaults, func(login string) bool { return strings.EqualFold(login, org.Login) }) {
+			selected = append(selected, option)
+		}
+	}
+
+	var answers []string
+	err := survey.AskOne(&survey.MultiSelect{
+		Message:  message,
+		Options:  options,
+		Default:  selected,
+		PageSize: 20,
+		VimMode:  false,
+		Help:     "[Use arrows to move, space to select, <right> to all, <left> to none, type to filter]",
+	}, &answers, survey.WithValidator(func(ans interface{}) error {
+		if list, ok := ans.([]core.OptionAnswer); ok && len(list) == 0 {
+			return errors.New("select at least one organization")
+		}
+		return nil
+	}))
+	if err != nil {
+		if isCancelled(err) {
+			return nil, errors.New("operation cancelled by user")
+		}
+		return nil, err
+	}
+
+	result := make([]GitHubOrganization, 0, len(answers))
+	for _, answer := range answers {
+		result = append(result, optionMap[answer])
+	}
+
+	return result, nil
 }
 
 func PromptForCodespaceSelection(codespaces []GitHubCodespace, orgName string, getUserDisplayName func(string) string) ([]GitHubCodespace, error) {
@@ -245,6 +307,7 @@ type GithubRepository struct {
 	Visibility    string `json:"visibility"`
 	DefaultBranch string `json:"default_branch"`
 	IsTemplate    bool   `json:"is_template"`
+	Archived      bool   `json:"archived"`
 	// TemplateRepository is only returned when getting a single repository
 	TemplateRepository *GithubRepository `json:"template_repository"`
 }

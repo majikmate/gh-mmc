@@ -47,8 +47,10 @@ type classroom struct {
 
 type mmc struct {
 	Organization org
-	Classroom    classroom `json:",omitzero"`
-	Students     []student
+	// TemplateOrganizations are the organizations searched for template repositories when creating a course
+	TemplateOrganizations []org     `json:",omitempty"`
+	Classroom             classroom `json:",omitzero"`
+	Students              []student
 }
 
 var (
@@ -88,6 +90,11 @@ func LoadClassroom() (*mmc, error) {
 		return nil, err
 	}
 
+	return LoadClassroomFrom(classroomFolder)
+}
+
+// LoadClassroomFrom loads the classroom of the classroom folder
+func LoadClassroomFrom(classroomFolder string) (*mmc, error) {
 	p := filepath.Join(classroomFolder, mmcFolder, classroomFile)
 	file, err := os.Open(p)
 	if err != nil {
@@ -117,6 +124,22 @@ func (c *mmc) SetOrganization(id int, login string) {
 		Id:    id,
 		Login: login,
 	}
+}
+
+func (c *mmc) AddTemplateOrganization(id int, login string) {
+	c.TemplateOrganizations = append(c.TemplateOrganizations, org{
+		Id:    id,
+		Login: login,
+	})
+}
+
+// TemplateOrganizationLogins returns the logins of the organizations searched for template repositories
+func (c *mmc) TemplateOrganizationLogins() []string {
+	logins := make([]string, 0, len(c.TemplateOrganizations))
+	for _, o := range c.TemplateOrganizations {
+		logins = append(logins, o.Login)
+	}
+	return logins
 }
 
 func (c *mmc) AddStudent(name, email, githubUser string) {
