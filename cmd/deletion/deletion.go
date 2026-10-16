@@ -81,9 +81,9 @@ func NewCmdClean(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-func NewCmdDelete(f *cmdutil.Factory) *cobra.Command {
+func NewCmdPurge(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "delete",
+		Use:   "purge",
 		Short: "Deletes all repositories of a course on GitHub and locally",
 		Long: heredoc.Doc(`
 
@@ -111,9 +111,9 @@ func NewCmdDelete(f *cmdutil.Factory) *cobra.Command {
 			in the browser, and removed again afterwards without any interaction, even if the
 			command fails or is interrupted. A local clone is only deleted after its
 			repository on GitHub was deleted.`),
-		Example: `$ gh mmc delete`,
+		Example: `$ gh mmc purge`,
 		Run: func(cmd *cobra.Command, args []string) {
-			deleteCourse()
+			purge()
 		},
 	}
 
@@ -214,9 +214,9 @@ func clean() {
 	}
 }
 
-// deleteCourse deletes the repositories of the course of the current folder on GitHub and locally after confirmation
-func deleteCourse() {
-	co, restore := openCourse("delete")
+// purge deletes the repositories of the course of the current folder on GitHub and locally after confirmation
+func purge() {
+	co, restore := openCourse("purge")
 	defer restore()
 
 	client, err := api.DefaultRESTClient()

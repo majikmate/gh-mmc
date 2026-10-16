@@ -29,7 +29,7 @@ func NewRootCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd.AddCommand(check.NewCmdCheck(f))
 	cmd.AddCommand(codespaces.NewCmdCodespaces(f))
 	cmd.AddCommand(deletion.NewCmdClean(f))
-	cmd.AddCommand(deletion.NewCmdDelete(f))
+	cmd.AddCommand(deletion.NewCmdPurge(f))
 
 	return cmd
 }

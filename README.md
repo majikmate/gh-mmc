@@ -8,7 +8,7 @@ This extension is an opinionated [GitHub CLI](https://cli.github.com) extension 
 - `gh mmc pull` creates a course from a template repository, i.e. a private starter repository and a student repository forked from it for every student, distributes the changes of the starter repository to the student repositories, and clones and pulls them
 - `gh mmc check` compares the files of the students within each assignment to detect potential plagiarism
 - `gh mmc codespaces` lists and removes the codespaces of the organization
-- `gh mmc clean` and `gh mmc delete` remove the local clones of a course, or its repositories on GitHub and locally
+- `gh mmc clean` and `gh mmc purge` remove the local clones of a course, or its repositories on GitHub and locally
 
 # Installation
 - Install the gh cli
@@ -75,7 +75,7 @@ The folder containing the `.mmc` folder created by `gh mmc init` is the classroo
 The commands can be run in any folder below their root folder. They always operate in their root folder and return to the current folder afterwards:
 - `gh mmc init` searches for the classroom root, i.e. the folder containing `.mmc/classroom.json`, or for a new classroom, the folder containing the accounts file. If it finds neither, it aborts with an error.
 - `gh mmc pull` searches for the course root, i.e. the folder containing `.mmc/course.json`, and then for the classroom root. If it finds neither, it aborts with an error.
-- `gh mmc check`, `gh mmc clean` and `gh mmc delete` search for the course root. If they do not find one, they abort with an error.
+- `gh mmc check`, `gh mmc clean` and `gh mmc purge` search for the course root. If they do not find one, they abort with an error.
 - `gh mmc codespaces` can be run in any folder. Within a course or a classroom, it only operates on the codespaces of their repositories, see [Codespaces](#codespaces).
 
 ## Courses
@@ -155,11 +155,11 @@ Both commands operate on the organization given with `--org`, or else on the org
 
 Managing the codespaces of an organization requires you to be an owner of the organization and the gh token to have the `admin:org` scope. If it does not have it, the scope is added and removed again afterwards, as for inviting students.
 
-## Cleaning and deleting
+## Cleaning and purging
 
 `gh mmc clean` removes the local clones of the starter repository and of the student repositories of the course. The repositories on GitHub are not changed, so `gh mmc pull` clones them again. Local clones with uncommitted or unpushed changes are kept, so that no work is lost.
 
-`gh mmc delete` deletes the starter repository and the student repositories of the course on GitHub and locally. This cannot be undone. The command lists all repositories it deletes, including local clones with changes that are not pushed, and asks you to type the name of the classroom to confirm. Deleting the private starter repository on GitHub deletes all its forks as well, e.g. the ones of students that are not on the roster anymore, so the student repositories are deleted first, and the starter repository is kept if any of them cannot be deleted. A local clone is only deleted after its repository on GitHub was deleted. Deleting requires the gh token to have the `delete_repo` scope, which is added for deleting and removed again afterwards if necessary, both requiring you to authenticate in the browser.
+`gh mmc purge` deletes the starter repository and the student repositories of the course on GitHub and locally. This cannot be undone. The command lists all repositories it deletes, including local clones with changes that are not pushed, and asks you to type the name of the classroom to confirm. Deleting the private starter repository on GitHub deletes all its forks as well, e.g. the ones of students that are not on the roster anymore, so the student repositories are deleted first, and the starter repository is kept if any of them cannot be deleted. A local clone is only deleted after its repository on GitHub was deleted. Deleting requires the gh token to have the `delete_repo` scope, which is added for deleting and removed again afterwards if necessary, both requiring you to authenticate in the browser.
 
 Both commands only remove folders that are a clone of the repository, and keep the metadata of the course, so that `gh mmc pull` can set up the course again.
 
