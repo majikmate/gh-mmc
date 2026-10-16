@@ -5,8 +5,7 @@
 This extension is an opinionated [GitHub CLI](https://cli.github.com) extension for teachers to manage the student repositories of their classes in a GitHub organization. It works directly with the organization and its repositories and does not use GitHub Classroom:
 
 - `gh mmc init` creates the roster of a classroom from an Excel file and invites the students to the organization
-- `gh mmc pull` creates a course from a template repository, i.e. a private starter repository and a student repository forked from it for every student, and clones and pulls them
-- `gh mmc sync` distributes the changes of the starter repository to the student repositories
+- `gh mmc pull` creates a course from a template repository, i.e. a private starter repository and a student repository forked from it for every student, distributes the changes of the starter repository to the student repositories, and clones and pulls them
 - `gh mmc check` compares the files of the students within each assignment to detect potential plagiarism
 - `gh mmc codespaces` lists and removes the codespaces of the organization
 - `gh mmc clean` and `gh mmc delete` remove the local clones of a course, or its repositories on GitHub and locally
@@ -76,7 +75,7 @@ The folder containing the `.mmc` folder created by `gh mmc init` is the classroo
 The commands can be run in any folder below their root folder. They always operate in their root folder and return to the current folder afterwards:
 - `gh mmc init` searches for the classroom root, i.e. the folder containing `.mmc/classroom.json`, or for a new classroom, the folder containing the accounts file. If it finds neither, it aborts with an error.
 - `gh mmc pull` searches for the course root, i.e. the folder containing `.mmc/course.json`, and then for the classroom root. If it finds neither, it aborts with an error.
-- `gh mmc sync`, `gh mmc check`, `gh mmc clean` and `gh mmc delete` search for the course root. If they do not find one, they abort with an error.
+- `gh mmc check`, `gh mmc clean` and `gh mmc delete` search for the course root. If they do not find one, they abort with an error.
 - `gh mmc codespaces` can be run in any folder. Within a course or a classroom, it only operates on the codespaces of their repositories, see [Codespaces](#codespaces).
 
 ## Courses
@@ -107,15 +106,13 @@ classroom/course/classroom/.git
 classroom/course/lastname.firstname/.git
 ```
 
-`gh mmc pull` run within a course sets up that course again with the metadata of `course.json`, e.g., after adding students or after students accepted the invitation to the organization. The starter repository is created from the template repository if it does not exist yet, and missing student repositories are created. Valid student repositories that exist already are left as is if the student has write access already, except that GitHub Actions and all their workflows are enabled on every run: GitHub does not run the workflows of a fork on events like push or schedule otherwise, and only knows the workflows of a fork after the first push to it. Repositories that are not cloned yet are cloned, and repositories that are cloned already are pulled. Local changes are stashed before pulling and restored afterwards. Every valid student repository that is available on GitHub is cloned or pulled, even if it could not be set up completely.
+`gh mmc pull` run within a course sets up that course again with the metadata of `course.json`, e.g., after adding students or after students accepted the invitation to the organization. The starter repository is created from the template repository if it does not exist yet, and missing student repositories are created. Valid student repositories that exist already are left as is if the student has write access already, except that GitHub Actions and all their workflows are enabled on every run: GitHub does not run the workflows of a fork on events like push or schedule otherwise, and only knows the workflows of a fork after the first push to it. Student repositories are synchronized with the starter repository, see [Syncing](#syncing). Repositories that are not cloned yet are cloned, and repositories that are cloned already are pulled. Local changes are stashed before pulling and restored afterwards. Every valid student repository that is available on GitHub is cloned or pulled, even if it could not be set up or synchronized completely.
 
 There is only one student repository per student in a course, named after the GitHub user of the student. A student repository on GitHub is invalid if its student is not a member of the organization, or if any user other than you and the organization owners has write access to it. It is invalid as well if forking the starter repository returns another repository than the student repository, e.g., because its name was taken in the meantime. Invalid student repositories are only reported: they are neither changed on GitHub, nor cloned or pulled. Fix them on GitHub. `gh mmc` never deletes a repository, neither on GitHub nor locally.
 
 ## Syncing
 
-`gh mmc sync` synchronizes the student repositories of a course with the starter repository on GitHub, so that the students can pull the changes of the starter repository, e.g., example code that shall be distributed to the students. It must be run within a course folder and always operates in the course folder. If there is no course folder, it aborts with an error.
-
-The command does everything `gh mmc pull` does. Additionally, it synchronizes the default branch of every valid student repository on GitHub with the starter repository before pulling it, so that the local clones have the latest state. Student repositories created in the same run are up to date already. Student repositories whose changes conflict with the changes of the starter repository cannot be synchronized and are reported as an error. Invalid student repositories are only reported and not synchronized.
+`gh mmc pull` synchronizes the default branch of every valid student repository on GitHub with the starter repository before cloning or pulling it, so that the students can pull the changes of the starter repository, e.g., example code that shall be distributed to the students, and the local clones have the latest state. Student repositories created in the same run are up to date already. Student repositories whose changes conflict with the changes of the starter repository cannot be synchronized and are reported as an error. Invalid student repositories are only reported and not synchronized.
 
 ## Checking for plagiarism
 
@@ -168,7 +165,7 @@ Both commands only remove folders that are a clone of the repository, and keep t
 
 ## Status
 
-`gh mmc pull` and `gh mmc sync` list the starter repository first and then every student once, by the local folder and the URL of the repository. The label tells what happened: `Created`, `Updated` (made private, write access granted or workflows enabled), `Synced` (`gh mmc sync` only), `Cloned`, `Pulled`, or `Clean` if nothing changed, or `Pending` if the invitation of the student is not accepted yet, `Invalid` or `Failed`. After `gh mmc pull` and `gh mmc sync`, the local clones have the latest state of the repositories on GitHub. A table summarizing the status of the students follows. Statuses no student has are omitted, e.g.:
+`gh mmc pull` lists the starter repository first and then every student once, by the local folder and the URL of the repository. The label tells what happened: `Created`, `Updated` (made private, write access granted or workflows enabled), `Synced` (changes of the starter repository merged), `Cloned`, `Pulled`, or `Clean` if nothing changed, or `Pending` if the invitation of the student is not accepted yet, `Invalid` or `Failed`. After `gh mmc pull`, the local clones have the latest state of the repositories on GitHub. A table summarizing the status of the students follows. Statuses no student has are omitted, e.g.:
 
 ```
 Clean: 2026-1aWI-SWP (https://github.com/HTLD-MMC-TEST/2026-1aWI-SWP-module-ts)

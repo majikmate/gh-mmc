@@ -119,11 +119,11 @@ func (s *student) status() string {
 func NewCmdPull(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "pull",
-		Short: "Creates a course, or sets up, clones and pulls the repositories of a course",
+		Short: "Creates a course, or sets up, syncs, clones and pulls the repositories of a course",
 		Long: heredoc.Doc(`
 
-			Creates a course, or sets up the repositories of a course on GitHub, and clones and
-			pulls them.
+			Creates a course, or sets up the repositories of a course on GitHub and synchronizes
+			the student repositories with the starter repository, and clones and pulls them.
 
 			The command can be run in a course folder, in a classroom folder or in any folder
 			below them. It searches the course root first, i.e. the folder containing the .mmc
@@ -176,47 +176,46 @@ func NewCmdPull(f *cmdutil.Factory) *cobra.Command {
 			of a fork after the first push to it. Repositories are never deleted, neither on
 			GitHub nor locally.
 
+			The default branch of every valid student repository on GitHub is synchronized
+			with the starter repository before it is cloned or pulled, so that the students
+			can pull the changes of the starter repository, e.g. example code that shall be
+			distributed to the students, and the local clones have the latest state. Student
+			repositories created in the same run are up to date already. Student repositories
+			whose changes conflict with the changes of the starter repository cannot be
+			synchronized and are reported as error.
+
 			The starter repository is always cloned into a folder named after the classroom.
 			Every student repository is cloned into the folder lastname.firstname of the course
 			folder, made from the part of the email of the student before the @, which is
 			firstname.lastname. Repositories that are cloned already are pulled from their
 			default branch. Local changes are stashed before pulling and restored afterwards.
 			Every valid student repository that is available on GitHub is cloned or pulled,
-			even if it could not be set up completely.
+			even if it could not be set up or synchronized completely.
 
 			The command lists the starter repository first and then every student once, by the
 			local folder and the URL of the repository, e.g.
 			Pulled: lastname.firstname (https://github.com/org/repo). The label tells what
 			happened: Created, Updated (made private, write access granted or workflows
-			enabled), Synced (gh mmc
-			sync only), Cloned, Pulled, or Clean if nothing changed, or Pending if the invitation
-			of the student is not accepted yet, Invalid or Failed. At the end, a table summarizes
-			the status of the students in the course.`),
+			enabled), Synced (changes of the starter repository merged), Cloned, Pulled, or
+			Clean if nothing changed, or Pending if the invitation of the student is not
+			accepted yet, Invalid or Failed. At the end, a table summarizes the status of the
+			students in the course.`),
 		Example: `$ gh mmc pull`,
 		Run: func(cmd *cobra.Command, args []string) {
-			Run(Options{})
+			Run()
 		},
 	}
 
 	return cmd
 }
 
-// Options control what Run does besides pulling
-type Options struct {
-	// Sync requires a course, and synchronizes the student repositories with the starter repository after pulling
-	Sync bool
-}
-
-// Run creates a new course in the classroom root, or sets up the course of the course root, and clones and pulls
-// the repositories of the course
-func Run(opts Options) {
+// Run creates a new course in the classroom root, or sets up the course of the course root, synchronizes the student
+// repositories with the starter repository, and clones and pulls the repositories of the course
+func Run() {
 	// The course root is searched first, then the classroom root
 	courseFolder, err := mmc.FindCourseFolder()
 	isNewCourse := errors.Is(err, mmc.ErrCourseNotFound)
 	if err != nil && !isNewCourse {
-		mmc.Fatal(err)
-	}
-	if isNewCourse && opts.Sync {
 		mmc.Fatal(err)
 	}
 
@@ -458,7 +457,7 @@ func Run(opts Options) {
 	// appears only once in the list of repositories
 	statuses := make([]string, 0, len(students))
 	for _, s := range students {
-		processStudent(client, s, org, starter, staff, courseFolder, opts.Sync)
+		processStudent(client, s, org, starter, staff, courseFolder)
 		fmt.Println(s.line())
 		statuses = append(statuses, s.status())
 		failed = failed || s.invalid != nil || len(s.errors) > 0
@@ -512,11 +511,10 @@ func printCourseTable(course, org string, statuses []string) {
 	}.Print()
 }
 
-// processStudent checks the student repository on GitHub and sets it up for a member of the organization. If sync is
-// set, it synchronizes the student repository with the starter repository on GitHub. Then it clones or pulls it, so
-// that its local clone has the latest state. Invalid student repositories are only reported, they are neither changed
-// nor cloned or pulled.
-func processStudent(client *api.RESTClient, s *student, org string, starter ghapi.GithubRepository, staff map[string]bool, courseFolder string, sync bool) {
+// processStudent checks the student repository on GitHub, sets it up for a member of the organization and
+// synchronizes it with the starter repository on GitHub. Then it clones or pulls it, so that its local clone has the
+// latest state. Invalid student repositories are only reported, they are neither changed nor cloned or pulled.
+func processStudent(client *api.RESTClient, s *student, org string, starter ghapi.GithubRepository, staff map[string]bool, courseFolder string) {
 	checkStudentRepository(client, s, org, staff)
 	if s.invalid != nil || s.membership != ghapi.MembershipActive || len(s.errors) > 0 {
 		return
@@ -540,7 +538,7 @@ func processStudent(client *api.RESTClient, s *student, org string, starter ghap
 	// Student repositories are synchronized with the starter repository on GitHub before they are pulled, so that the
 	// local clones have the latest state. Forks created in this run are up to date with the starter repository
 	// already.
-	if sync && !s.created {
+	if !s.created {
 		branch := s.repository.DefaultBranch
 		if branch == "" {
 			branch = "main"

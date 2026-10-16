@@ -7,7 +7,6 @@ import (
 	"github.com/majikmate/gh-mmc/cmd/deletion"
 	"github.com/majikmate/gh-mmc/cmd/initialize"
 	"github.com/majikmate/gh-mmc/cmd/pull"
-	"github.com/majikmate/gh-mmc/cmd/sync"
 	"github.com/majikmate/gh-mmc/pkg/ghapi"
 	"github.com/majikmate/gh-mmc/pkg/mmc"
 	"github.com/spf13/cobra"
@@ -27,7 +26,6 @@ func NewRootCmd(f *cmdutil.Factory) *cobra.Command {
 
 	cmd.AddCommand(initialize.NewCmdInit(f))
 	cmd.AddCommand(pull.NewCmdPull(f))
-	cmd.AddCommand(sync.NewCmdSync(f))
 	cmd.AddCommand(check.NewCmdCheck(f))
 	cmd.AddCommand(codespaces.NewCmdCodespaces(f))
 	cmd.AddCommand(deletion.NewCmdClean(f))
