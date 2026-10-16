@@ -170,8 +170,11 @@ func NewCmdPull(f *cmdutil.Factory) *cobra.Command {
 			repository, e.g. because its name was taken in the meantime. Invalid student
 			repositories are only reported: they are neither changed on GitHub, nor cloned or
 			pulled. Fix them on GitHub. A valid student repository that exists already is left
-			as is if the student has write access to it already. Repositories are never
-			deleted, neither on GitHub nor locally.
+			as is if the student has write access to it already, except that GitHub Actions
+			and all its workflows are enabled on every run: GitHub does not run the workflows
+			of a fork on events like push or schedule otherwise, and only knows the workflows
+			of a fork after the first push to it. Repositories are never deleted, neither on
+			GitHub nor locally.
 
 			The starter repository is always cloned into a folder named after the classroom.
 			Every student repository is cloned into the folder lastname.firstname of the course
@@ -184,7 +187,8 @@ func NewCmdPull(f *cmdutil.Factory) *cobra.Command {
 			The command lists the starter repository first and then every student once, by the
 			local folder and the URL of the repository, e.g.
 			Pulled: lastname.firstname (https://github.com/org/repo). The label tells what
-			happened: Created, Updated (made private or write access granted), Synced (gh mmc
+			happened: Created, Updated (made private, write access granted or workflows
+			enabled), Synced (gh mmc
 			sync only), Cloned, Pulled, or Clean if nothing changed, or Pending if the invitation
 			of the student is not accepted yet, Invalid or Failed. At the end, a table summarizes
 			the status of the students in the course.`),
@@ -590,10 +594,10 @@ func checkStudentRepository(client *api.RESTClient, s *student, org string, staf
 }
 
 // setupStudentRepository forks the starter repository into the student repository unless it exists already, makes
-// sure it is private and grants the student write access to it unless the student has it already. It returns the
-// student repository and the changes made to it. On errors, it returns the student repository as well if it exists.
-// If GitHub returns another repository than the requested fork, the student repository is marked invalid, since
-// there is only one student repository per student in a course.
+// sure it is private, grants the student write access to it unless the student has it already, and enables its
+// workflows. It returns the student repository and the changes made to it. On errors, it returns the student
+// repository as well if it exists. If GitHub returns another repository than the requested fork, the student
+// repository is marked invalid, since there is only one student repository per student in a course.
 func setupStudentRepository(client *api.RESTClient, org string, starter ghapi.GithubRepository, s *student) (ghapi.GithubRepository, []string, error) {
 	repository := s.repository
 	if repository.FullName == "" {
@@ -628,7 +632,41 @@ func setupStudentRepository(client *api.RESTClient, org string, starter ghapi.Gi
 		changes = append(changes, "granted "+s.githubUser+" write access")
 	}
 
+	enabled, err := enableWorkflows(client, repository)
+	if err != nil {
+		return repository, changes, err
+	}
+	if enabled {
+		changes = append(changes, "enabled workflows")
+	}
+
 	return repository, changes, nil
+}
+
+// enableWorkflows enables all workflows of the student repository and GitHub Actions for it. GitHub does not run the
+// workflows of a fork on events like push or schedule before, even though it reports Actions as enabled and the
+// workflows as active, so both are enabled on every run. GitHub only knows the workflows of a fork after the first
+// push to it. It returns whether Actions or a workflow was reported as disabled before.
+func enableWorkflows(client *api.RESTClient, repository ghapi.GithubRepository) (bool, error) {
+	workflows, err := ghapi.ListWorkflows(client, repository)
+	if err != nil {
+		return false, fmt.Errorf("failed to list workflows: %v", err)
+	}
+
+	enabled := false
+	for _, w := range workflows {
+		if err := ghapi.EnableWorkflow(client, repository, w); err != nil {
+			return enabled, fmt.Errorf("failed to enable workflow %s: %v", w.Path, err)
+		}
+		enabled = enabled || w.State != "active"
+	}
+
+	wasDisabled, err := ghapi.EnableActions(client, repository)
+	if err != nil {
+		return enabled, fmt.Errorf("failed to enable GitHub Actions: %v", err)
+	}
+
+	return enabled || wasDisabled, nil
 }
 
 // syncUpToDate is the merge type of a student repository that was up to date with the starter repository already

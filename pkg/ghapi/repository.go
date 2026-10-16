@@ -378,6 +378,72 @@ func CreateFork(client *api.RESTClient, repository GithubRepository, org string,
 	return response, nil
 }
 
+// GithubWorkflow is a GitHub Actions workflow of a repository
+type GithubWorkflow struct {
+	Id    int64  `json:"id"`
+	Path  string `json:"path"`
+	State string `json:"state"`
+}
+
+// ListWorkflows returns the workflows of the repository. GitHub only knows the workflows of a fork after the first
+// push to it, so a fork that was never pushed to has none yet.
+func ListWorkflows(client *api.RESTClient, repository GithubRepository) ([]GithubWorkflow, error) {
+	var workflows []GithubWorkflow
+	perPage := 100
+	for page := 1; ; page++ {
+		var response struct {
+			Workflows []GithubWorkflow `json:"workflows"`
+		}
+		err := client.Get(fmt.Sprintf("repos/%s/actions/workflows?page=%v&per_page=%v", repository.FullName, page, perPage), &response)
+		if err != nil {
+			return nil, err
+		}
+
+		workflows = append(workflows, response.Workflows...)
+
+		if len(response.Workflows) < perPage {
+			return workflows, nil
+		}
+	}
+}
+
+// EnableWorkflow enables the workflow of the repository, e.g. a workflow that was disabled manually
+func EnableWorkflow(client *api.RESTClient, repository GithubRepository, workflow GithubWorkflow) error {
+	return client.Put(fmt.Sprintf("repos/%s/actions/workflows/%d/enable", repository.FullName, workflow.Id), nil, nil)
+}
+
+// EnableActions enables GitHub Actions for the repository and keeps the actions it allows. GitHub does not run the
+// workflows of a fork on events like push or schedule before, even though it reports Actions as enabled. It returns
+// whether Actions was reported as disabled before.
+func EnableActions(client *api.RESTClient, repository GithubRepository) (bool, error) {
+	var permissions struct {
+		Enabled        bool   `json:"enabled"`
+		AllowedActions string `json:"allowed_actions"`
+	}
+	err := client.Get(fmt.Sprintf("repos/%s/actions/permissions", repository.FullName), &permissions)
+	if err != nil {
+		return false, err
+	}
+
+	settings := map[string]any{
+		"enabled": true,
+	}
+	if permissions.AllowedActions != "" {
+		settings["allowed_actions"] = permissions.AllowedActions
+	}
+	body, err := json.Marshal(settings)
+	if err != nil {
+		return false, err
+	}
+
+	err = client.Put(fmt.Sprintf("repos/%s/actions/permissions", repository.FullName), bytes.NewReader(body), nil)
+	if err != nil {
+		return false, err
+	}
+
+	return !permissions.Enabled, nil
+}
+
 // isCancelled checks if a prompt was cancelled by the user (Ctrl+C, ESC, etc.)
 func isCancelled(err error) bool {
 	return err == terminal.InterruptErr ||
